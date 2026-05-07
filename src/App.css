@@ -883,4 +883,14 @@ input:disabled {
   .session-card {
     grid-template-columns: auto 1fr;
   }
+  .participant-count.active-choice {
+  background: rgba(212, 225, 87, 0.22) !important;
+  border-color: #d4e157 !important;
+  box-shadow: 0 0 0 3px rgba(212, 225, 87, 0.25);
+}
+
+.participant-count.active-choice strong,
+.participant-count.active-choice span {
+  color: #d4e157 !important;
+}
 }
