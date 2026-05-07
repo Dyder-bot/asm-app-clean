@@ -1507,9 +1507,20 @@ input {
     padding: 0;
   }
 
+  .auth-screen {
+    padding: 0;
+    align-items: stretch;
+  }
+
   .auth-card {
-    max-width: calc(100vw - 28px);
-    padding: 22px;
+    min-height: 100vh;
+    border-radius: 0;
+    width: 100%;
+    max-width: 100%;
+    padding: 32px 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
   }
 
   .auth-card h1 {
@@ -1521,21 +1532,4 @@ input {
     min-height: 48px;
     font-size: 15px;
   }
-  @media (max-width: 480px) {
-  .auth-screen {
-    padding: 0;
-    align-items: stretch;
-  }
-
-  .auth-card {
-    min-height: 100vh;
-    border-radius: 0;
-    width: 100%;
-    padding: 32px 20px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-  }
 }
-
-
