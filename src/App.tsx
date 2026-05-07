@@ -1028,6 +1028,16 @@ export default function CalendarApp() {
                 <input type="number" value={profileFcMax} onChange={(e) => setProfileFcMax(e.target.value)} placeholder="Ex : 190" />
               </div>
 
+              <div className="form-row">
+              <label>FC au repos</label>
+              <input
+                type="number"
+                 value={profileFcRest}
+                  onChange={(e) => setProfileFcRest(e.target.value)}
+                    placeholder="Ex : 48"
+                    />
+                </div>
+ 
               <div className="personal-goal-card">
                 <h3>Estimer ma VMA</h3>
                 <p>Renseigne une course récente pour obtenir une estimation.</p>
