@@ -438,18 +438,6 @@ export default function CalendarApp() {
     setSessions((data || []) as Session[]);
   }
 
-  async function fetchMyParticipations() {
-    if (!user) return;
-
-    const { data, error } = await supabase
-      .from("participants")
-      .select("session_id, status")
-      .eq("user_id", user.id);
-
-    if (error) return;
-    setMyParticipations((data || []) as MyParticipation[]);
-  }
-
   async function fetchParticipants(sessionId: string) {
     const { data: rows, error } = await supabase
       .from("participants")
@@ -729,7 +717,6 @@ export default function CalendarApp() {
 
     if (currentStatus === status) {
       fetchParticipants(selectedSession.id);
-      fetchMyParticipations();
       setShowAdminActions(false);
       return;
     }
