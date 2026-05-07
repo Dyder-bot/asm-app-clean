@@ -914,4 +914,21 @@ input:disabled {
   font-size: 14px;
   padding: 12px;
 }
+  .participation-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.participation-column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.small-btn {
+  padding: 10px;
+  font-size: 14px;
+}
 }
