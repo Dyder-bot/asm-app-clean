@@ -1130,16 +1130,6 @@ export default function CalendarApp() {
                 </button>
               </div>
 
-              {profileVma && (
-                <div className="personal-goal-card">
-                  <h3>Repères d’allure</h3>
-                  <p>70% VMA : {formatPace(60 / (Number(profileVma) * 0.7))}</p>
-                  <p>80% VMA : {formatPace(60 / (Number(profileVma) * 0.8))}</p>
-                  <p>90% VMA : {formatPace(60 / (Number(profileVma) * 0.9))}</p>
-                  <p>100% VMA : {formatPace(60 / Number(profileVma))}</p>
-                </div>
-              )}
-
               <button className="primary-btn" onClick={saveMyProfile}>Enregistrer le profil</button>
             </div>
           </section>
