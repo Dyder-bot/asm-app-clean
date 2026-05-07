@@ -864,12 +864,14 @@ export default function CalendarApp() {
 
   if (!user) {
     return (
-      <div className="app-screen auth-screen">
-        <div className="auth-card">
-          <img className="auth-logo" src="/logo-asm.png" alt="ASM Pau" />
-          <h1>ASM Pau</h1>
-          <p>Calendrier des sorties et entraînements</p>
+  <div className="app-screen auth-screen">
+    <div className="auth-card">
 
+      <img src="/logo-asm.png" alt="ASM Pau" className="auth-logo" />
+
+      <h1>ASM Pau</h1>
+      <p>Course à pied</p>
+      
           <input placeholder="Prénom" value={firstname} onChange={(e) => setFirstname(e.target.value)} />
           <input placeholder="Nom" value={lastname} onChange={(e) => setLastname(e.target.value)} />
           <input placeholder="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
