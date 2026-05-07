@@ -1,6 +1,6 @@
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { motion } from "framer-motion";
 import "./App.css";
@@ -21,8 +21,256 @@ const SESSION_TYPES = [
   "Ski de randonnée",
 ];
 
+const WEEK_DAYS = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
+
+type AppTab = "calendar" | "profile";
+type ParticipationStatus = "present" | "interested";
+type WorkoutMode = "" | "vma" | "fc" | "seuil" | "10km" | "allure";
+
+type Session = {
+  id: string;
+  title: string;
+  type?: string | null;
+  date: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  location?: string | null;
+  description?: string | null;
+  image_url?: string | null;
+  gpx_url?: string | null;
+  created_by?: string | null;
+  workout_mode?: WorkoutMode | null;
+  fraction_distance?: number | null;
+  intensity_percent?: number | null;
+};
+
+type Participant = {
+  id: string;
+  session_id: string;
+  user_id: string;
+  status: ParticipationStatus;
+  firstname?: string;
+  lastname?: string;
+};
+
+type PersonalGoal =
+  | {
+      type: "vma";
+      repetitions?: number;
+      distance: number;
+      percent: number;
+      vma: number;
+      pace: number;
+      timeSeconds: number;
+    }
+  | {
+      type: "fc";
+      percent: number;
+      fcMax: number;
+      targetFc: number;
+    }
+  | {
+      type: "seuil" | "10km";
+      surface: "trail" | "route";
+      repetitions?: number;
+      distance?: number;
+      durationMin?: number;
+      percent: number;
+      vma: number;
+      pace: number;
+      timeSeconds?: number;
+    }
+  | {
+      type: "allure";
+      pace: number;
+    };
+
+function pad(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function formatDateKey(date: Date, day: number) {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(day)}`;
+}
+
+function formatPace(paceMinKm: number) {
+  if (!Number.isFinite(paceMinKm) || paceMinKm <= 0) return "-";
+  const minutes = Math.floor(paceMinKm);
+  const seconds = Math.round((paceMinKm - minutes) * 60);
+  return `${minutes}'${pad(seconds)}/km`;
+}
+
+function formatDuration(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "-";
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.round(seconds % 60);
+  return `${minutes}'${pad(remainingSeconds)}`;
+}
+
+function distanceBetween(a: { lat: number; lon: number }, b: { lat: number; lon: number }) {
+  const earthRadiusKm = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLon = ((b.lon - a.lon) * Math.PI) / 180;
+  const lat1 = (a.lat * Math.PI) / 180;
+  const lat2 = (b.lat * Math.PI) / 180;
+
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.sin(dLon / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
+
+  return 2 * earthRadiusKm * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+function estimateVmaFromRace(distanceKm: number, totalMinutes: number) {
+  const speed = distanceKm / (totalMinutes / 60);
+  let percent = 0.9;
+
+  if (distanceKm <= 5.5) percent = 0.95;
+  else if (distanceKm <= 11) percent = 0.9;
+  else if (distanceKm <= 23) percent = 0.85;
+  else percent = 0.8;
+
+  return (speed / percent).toFixed(1);
+}
+
+function calculateTargetFromStructuredSession(
+  session: Session,
+  profileVma: string,
+  profileFcMax: string
+): PersonalGoal | null {
+  const mode = session.workout_mode || "";
+  const distance = Number(session.fraction_distance || 0);
+  const percent = Number(session.intensity_percent || 0);
+  const vma = Number(profileVma || 0);
+  const fcMax = Number(profileFcMax || 0);
+
+  if (mode === "vma" && distance > 0 && percent > 0 && vma > 0) {
+    const speed = (vma * percent) / 100;
+    const pace = 60 / speed;
+    const timeSeconds = (distance / 1000) * pace * 60;
+    return { type: "vma", distance, percent, vma, pace, timeSeconds };
+  }
+
+  if (mode === "fc" && percent > 0 && fcMax > 0) {
+    return {
+      type: "fc",
+      percent,
+      fcMax,
+      targetFc: Math.round((fcMax * percent) / 100),
+    };
+  }
+
+  if ((mode === "seuil" || mode === "10km") && percent > 0 && vma > 0) {
+    const speed = (vma * percent) / 100;
+    const pace = 60 / speed;
+    const timeSeconds = distance > 0 ? (distance / 1000) * pace * 60 : undefined;
+    return {
+      type: mode,
+      surface: session.type?.toLowerCase().includes("trail") ? "trail" : "route",
+      distance: distance || undefined,
+      percent,
+      vma,
+      pace,
+      timeSeconds,
+    };
+  }
+
+  return null;
+}
+
+function calculateTargetFromText(
+  session: Session,
+  profileVma: string,
+  profileFcMax: string
+): PersonalGoal | null {
+  const text = `${session.title || ""} ${session.description || ""}`.toLowerCase();
+
+  const isTrailSession =
+    session.type?.toLowerCase().includes("trail") ||
+    text.includes("côte") ||
+    text.includes("cote") ||
+    text.includes("montée") ||
+    text.includes("montee") ||
+    text.includes("d+") ||
+    text.includes("dénivelé");
+
+  const vma = Number(profileVma || 0);
+  const fcMax = Number(profileFcMax || 0);
+
+  const vmaMatch = text.match(
+    /(\d+)\s*[x×]\s*(\d+)\s*(m|km)?\s*.*?(\d+)\s*%\s*(de\s*)?vma/
+  );
+
+  const fcMatch = text.match(/(\d+)\s*%\s*(de\s*)?(fc\s*max|fc|max)/);
+  const seuilMatch = text.match(/(\d+)\s*[x×]\s*(\d+)'?\s*(au\s*)?seuil/);
+  const km10Match = text.match(/(\d+)\s*[x×]\s*(\d+)\s*(m|km)?\s*.*?(allure\s*)?(10\s?km)/);
+  const allureMatch = text.match(/allure\s*(\d+)'(\d{1,2})"?/);
+
+  if (vmaMatch && vma > 0) {
+    const repetitions = Number(vmaMatch[1]);
+    const distance = vmaMatch[3] === "km" ? Number(vmaMatch[2]) * 1000 : Number(vmaMatch[2]);
+    const percent = Number(vmaMatch[4]);
+    const speed = (vma * percent) / 100;
+    const pace = 60 / speed;
+    const timeSeconds = (distance / 1000) * pace * 60;
+    return { type: "vma", repetitions, distance, percent, vma, pace, timeSeconds };
+  }
+
+  if (fcMatch && fcMax > 0) {
+    const percent = Number(fcMatch[1]);
+    return { type: "fc", percent, fcMax, targetFc: Math.round((fcMax * percent) / 100) };
+  }
+
+  if (seuilMatch && vma > 0) {
+    const repetitions = Number(seuilMatch[1]);
+    const durationMin = Number(seuilMatch[2]);
+    const percent = isTrailSession ? 80 : 83;
+    const speed = (vma * percent) / 100;
+    const pace = 60 / speed;
+
+    return {
+      type: "seuil",
+      surface: isTrailSession ? "trail" : "route",
+      repetitions,
+      durationMin,
+      percent,
+      vma,
+      pace,
+      timeSeconds: durationMin * 60,
+    };
+  }
+
+  if (km10Match && vma > 0) {
+    const repetitions = Number(km10Match[1]);
+    const distance = km10Match[3] === "km" ? Number(km10Match[2]) * 1000 : Number(km10Match[2]);
+    const percent = isTrailSession ? 85 : 88;
+    const speed = (vma * percent) / 100;
+    const pace = 60 / speed;
+    const timeSeconds = (distance / 1000) * pace * 60;
+
+    return {
+      type: "10km",
+      surface: isTrailSession ? "trail" : "route",
+      repetitions,
+      distance,
+      percent,
+      vma,
+      pace,
+      timeSeconds,
+    };
+  }
+
+  if (allureMatch) {
+    const minutes = Number(allureMatch[1]);
+    const seconds = Number(allureMatch[2]);
+    return { type: "allure", pace: minutes + seconds / 60 };
+  }
+
+  return null;
+}
+
 export default function CalendarApp() {
-  const [activeTab, setActiveTab] = useState<"calendar" | "profile">("calendar");
+  const [activeTab, setActiveTab] = useState<AppTab>("calendar");
   const [showMenu, setShowMenu] = useState(false);
   const [showAdminActions, setShowAdminActions] = useState(false);
 
@@ -31,32 +279,30 @@ export default function CalendarApp() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
   const [firstname, setFirstname] = useState("");
   const [lastname, setLastname] = useState("");
 
   const [profileSexe, setProfileSexe] = useState("");
   const [profileVma, setProfileVma] = useState("");
   const [profileFcMax, setProfileFcMax] = useState("");
-
   const [raceDistance, setRaceDistance] = useState("");
   const [raceTime, setRaceTime] = useState("");
 
-  const [sessions, setSessions] = useState<any[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [selectedSession, setSelectedSession] = useState<any | null>(null);
+  const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
-  const [participants, setParticipants] = useState<any[]>([]);
-  const [showParticipantList, setShowParticipantList] = useState<string | null>(null);
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [showParticipantList, setShowParticipantList] = useState<ParticipationStatus | null>(null);
   const [notificationEnabled, setNotificationEnabled] = useState(false);
 
   const [showGpxMap, setShowGpxMap] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
-  const [gpxStats, setGpxStats] = useState<any>(null);
+  const [gpxStats, setGpxStats] = useState<{ distance: string; elevationGain: number } | null>(null);
 
   const [formTitle, setFormTitle] = useState("");
   const [formType, setFormType] = useState("Trail");
@@ -64,11 +310,41 @@ export default function CalendarApp() {
   const [formEndTime, setFormEndTime] = useState("20:00");
   const [formLocation, setFormLocation] = useState("");
   const [formDescription, setFormDescription] = useState("");
-  const [formWorkoutMode, setFormWorkoutMode] = useState("");
+  const [formWorkoutMode, setFormWorkoutMode] = useState<WorkoutMode>("");
   const [formFractionDistance, setFormFractionDistance] = useState("");
   const [formIntensityPercent, setFormIntensityPercent] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [gpxFile, setGpxFile] = useState<File | null>(null);
+
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDayOfMonth = new Date(year, month, 1).getDay();
+  const mondayBasedOffset = firstDayOfMonth === 0 ? 6 : firstDayOfMonth - 1;
+
+  const presentParticipants = participants.filter((p) => p.status === "present");
+  const interestedParticipants = participants.filter((p) => p.status === "interested");
+  const myParticipation = participants.find((p) => p.user_id === user?.id)?.status;
+  const canEditSelectedSession = isAdmin || selectedSession?.created_by === user?.id;
+
+  const sessionsByDate = useMemo(() => {
+    return sessions.reduce((acc, session) => {
+      acc[session.date] = true;
+      return acc;
+    }, {} as Record<string, boolean>);
+  }, [sessions]);
+
+  const sessionsForSelectedDate = selectedDate
+    ? sessions.filter((session) => session.date === selectedDate)
+    : [];
+
+  const displayedParticipantList =
+    showParticipantList === "present" ? presentParticipants : interestedParticipants;
+
+  const personalGoal = selectedSession && myParticipation === "present"
+    ? calculateTargetFromStructuredSession(selectedSession, profileVma, profileFcMax) ||
+      calculateTargetFromText(selectedSession, profileVma, profileFcMax)
+    : null;
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user));
@@ -90,7 +366,7 @@ export default function CalendarApp() {
     fetchParticipants(selectedSession.id);
   }, [selectedSession]);
 
-  const fetchMyProfile = async () => {
+  async function fetchMyProfile() {
     if (!user) return;
 
     const { data, error } = await supabase
@@ -107,9 +383,9 @@ export default function CalendarApp() {
     setProfileVma(data?.vma ? String(data.vma) : "");
     setProfileFcMax(data?.fc_max ? String(data.fc_max) : "");
     setIsAdmin(data?.is_admin === true);
-  };
+  }
 
-  const saveMyProfile = async () => {
+  async function saveMyProfile() {
     if (!user) return;
 
     const pseudo = `${firstname} ${lastname.charAt(0).toUpperCase()}.`;
@@ -132,9 +408,9 @@ export default function CalendarApp() {
     }
 
     alert("Profil enregistré");
-  };
+  }
 
-  const fetchSessions = async () => {
+  async function fetchSessions() {
     const { data, error } = await supabase
       .from("sessions")
       .select("*")
@@ -145,10 +421,10 @@ export default function CalendarApp() {
       return;
     }
 
-    setSessions(data || []);
-  };
+    setSessions((data || []) as Session[]);
+  }
 
-  const fetchParticipants = async (sessionId: string) => {
+  async function fetchParticipants(sessionId: string) {
     const { data: rows, error } = await supabase
       .from("participants")
       .select("id, session_id, user_id, status")
@@ -173,7 +449,6 @@ export default function CalendarApp() {
 
     const enriched = (rows || []).map((row) => {
       const profile = (profiles || []).find((p) => p.id === row.user_id);
-
       return {
         ...row,
         firstname: profile?.pseudo || profile?.firstname || "Adhérent",
@@ -181,14 +456,11 @@ export default function CalendarApp() {
       };
     });
 
-    setParticipants(enriched);
-  };
+    setParticipants(enriched as Participant[]);
+  }
 
-  const handleLogin = async () => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+  async function handleLogin() {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
       alert("Erreur de connexion : " + error.message);
@@ -196,18 +468,15 @@ export default function CalendarApp() {
     }
 
     setUser(data.user);
-  };
+  }
 
-  const handleSignup = async () => {
+  async function handleSignup() {
     if (!firstname || !lastname || !email || !password) {
       alert("Merci de remplir prénom, nom, email et mot de passe.");
       return;
     }
 
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-    });
+    const { data, error } = await supabase.auth.signUp({ email, password });
 
     if (error) {
       alert("Erreur inscription : " + error.message);
@@ -228,9 +497,16 @@ export default function CalendarApp() {
     });
 
     setUser(newUser);
-  };
+  }
 
-  const resetForm = () => {
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    setUser(null);
+    setSelectedSession(null);
+    setShowMenu(false);
+  }
+
+  function resetForm() {
     setFormTitle("");
     setFormType("Trail");
     setFormStartTime("18:30");
@@ -243,9 +519,9 @@ export default function CalendarApp() {
     setImageFile(null);
     setGpxFile(null);
     setIsEditing(false);
-  };
+  }
 
-  const openCreateForm = () => {
+  function openCreateForm() {
     if (!selectedDate) {
       alert("Choisis d'abord une journée dans le calendrier.");
       return;
@@ -255,9 +531,9 @@ export default function CalendarApp() {
     setSelectedSession(null);
     setActiveTab("calendar");
     setShowCreateForm(true);
-  };
+  }
 
-  const openEditForm = () => {
+  function openEditForm() {
     if (!selectedSession) return;
 
     setFormTitle(selectedSession.title || "");
@@ -266,22 +542,19 @@ export default function CalendarApp() {
     setFormEndTime(selectedSession.end_time || "20:00");
     setFormLocation(selectedSession.location || "");
     setFormDescription(selectedSession.description || "");
-    setFormWorkoutMode(selectedSession.workout_mode || "");
-    setFormFractionDistance(selectedSession.fraction_distance || "");
-    setFormIntensityPercent(selectedSession.intensity_percent || "");
+    setFormWorkoutMode((selectedSession.workout_mode || "") as WorkoutMode);
+    setFormFractionDistance(selectedSession.fraction_distance ? String(selectedSession.fraction_distance) : "");
+    setFormIntensityPercent(selectedSession.intensity_percent ? String(selectedSession.intensity_percent) : "");
     setImageFile(null);
     setGpxFile(null);
     setIsEditing(true);
     setShowCreateForm(true);
     setShowAdminActions(false);
-  };
+  }
 
-  const uploadFile = async (file: File, bucketName: string) => {
+  async function uploadFile(file: File, bucketName: string) {
     const filePath = `${user.id}/${Date.now()}-${file.name}`;
-
-    const { error } = await supabase.storage
-      .from(bucketName)
-      .upload(filePath, file);
+    const { error } = await supabase.storage.from(bucketName).upload(filePath, file);
 
     if (error) {
       alert("Erreur upload fichier : " + error.message);
@@ -290,15 +563,15 @@ export default function CalendarApp() {
 
     const { data } = supabase.storage.from(bucketName).getPublicUrl(filePath);
     return data.publicUrl;
-  };
+  }
 
-  const handleSaveSession = async () => {
+  async function handleSaveSession() {
     if (!selectedDate && !selectedSession?.date) {
       alert("Choisis d'abord une date.");
       return;
     }
 
-    if (!formTitle) {
+    if (!formTitle.trim()) {
       alert("Merci d'ajouter un titre à la séance.");
       return;
     }
@@ -312,7 +585,7 @@ export default function CalendarApp() {
       : selectedSession?.gpx_url || null;
 
     const payload = {
-      title: formTitle,
+      title: formTitle.trim(),
       type: formType,
       date: selectedSession?.date || selectedDate,
       start_time: formStartTime,
@@ -339,47 +612,34 @@ export default function CalendarApp() {
         return;
       }
 
-      const updatedSession = data?.[0];
-
-      setSessions((current) =>
-        current.map((session) =>
-          session.id === updatedSession.id ? updatedSession : session
-        )
-      );
-
-      setSelectedSession(updatedSession);
+      const updatedSession = data?.[0] as Session | undefined;
+      if (updatedSession) {
+        setSessions((current) => current.map((session) => session.id === updatedSession.id ? updatedSession : session));
+        setSelectedSession(updatedSession);
+      }
     } else {
-      const { data, error } = await supabase
-        .from("sessions")
-        .insert(payload)
-        .select();
+      const { data, error } = await supabase.from("sessions").insert(payload).select();
 
       if (error) {
         alert("Erreur création séance : " + error.message);
         return;
       }
 
-      if (data && data[0]) {
-        setSessions((current) => [...current, data[0]]);
-      }
+      if (data?.[0]) setSessions((current) => [...current, data[0] as Session]);
     }
 
     resetForm();
     setShowCreateForm(false);
-  };
+  }
 
-  const handleDuplicateSession = async () => {
+  async function handleDuplicateSession() {
     if (!selectedSession || !user || !isAdmin) return;
 
-    const newDate = window.prompt(
-      "Date de la nouvelle séance au format AAAA-MM-JJ",
-      selectedSession.date
-    );
-
+    const newDate = window.prompt("Date de la nouvelle séance au format AAAA-MM-JJ", selectedSession.date);
     if (!newDate) return;
 
     const payload = {
-      title: selectedSession.title + " - copie",
+      title: `${selectedSession.title} - copie`,
       type: selectedSession.type,
       date: newDate,
       start_time: selectedSession.start_time,
@@ -394,10 +654,7 @@ export default function CalendarApp() {
       intensity_percent: selectedSession.intensity_percent,
     };
 
-    const { data, error } = await supabase
-      .from("sessions")
-      .insert(payload)
-      .select();
+    const { data, error } = await supabase.from("sessions").insert(payload).select();
 
     if (error) {
       alert("Erreur duplication séance : " + error.message);
@@ -405,37 +662,30 @@ export default function CalendarApp() {
     }
 
     if (data?.[0]) {
-      setSessions((current) => [...current, data[0]]);
+      setSessions((current) => [...current, data[0] as Session]);
       alert("Séance dupliquée");
       setShowAdminActions(false);
     }
-  };
+  }
 
-  const handleDeleteSession = async () => {
+  async function handleDeleteSession() {
     if (!selectedSession) return;
 
-    const confirmDelete = window.confirm("Supprimer cette séance ?");
-    if (!confirmDelete) return;
+    if (!window.confirm("Supprimer cette séance ?")) return;
 
-    const { error } = await supabase
-      .from("sessions")
-      .delete()
-      .eq("id", selectedSession.id);
+    const { error } = await supabase.from("sessions").delete().eq("id", selectedSession.id);
 
     if (error) {
       alert("Erreur suppression séance : " + error.message);
       return;
     }
 
-    setSessions((current) =>
-      current.filter((session) => session.id !== selectedSession.id)
-    );
-
+    setSessions((current) => current.filter((session) => session.id !== selectedSession.id));
     setSelectedSession(null);
     setShowAdminActions(false);
-  };
+  }
 
-  const handleParticipation = async (status: "present" | "interested") => {
+  async function handleParticipation(status: ParticipationStatus) {
     if (!selectedSession || !user) return;
 
     const currentStatus = participants.find((p) => p.user_id === user.id)?.status;
@@ -470,153 +720,9 @@ export default function CalendarApp() {
 
     fetchParticipants(selectedSession.id);
     setShowAdminActions(false);
-  };
+  }
 
-  const formatPace = (paceMinKm: number) => {
-    const minutes = Math.floor(paceMinKm);
-    const seconds = Math.round((paceMinKm - minutes) * 60);
-    return `${minutes}'${String(seconds).padStart(2, "0")}/km`;
-  };
-
-  const formatTime = (seconds: number) => {
-    const min = Math.floor(seconds / 60);
-    const sec = Math.round(seconds % 60);
-    return `${min}'${String(sec).padStart(2, "0")}`;
-  };
-
-  const estimateVmaFromRace = (distanceKm: number, totalMinutes: number) => {
-    const speed = distanceKm / (totalMinutes / 60);
-    let percent = 0.9;
-
-    if (distanceKm === 5) percent = 0.95;
-    if (distanceKm === 10) percent = 0.9;
-    if (distanceKm === 21.1) percent = 0.85;
-    if (distanceKm === 42.195) percent = 0.8;
-
-    return (speed / percent).toFixed(1);
-  };
-
-  const getPersonalGoal = (): any => {
-    if (!selectedSession || myParticipation !== "present") return null;
-
-    const text = `${selectedSession.title || ""} ${selectedSession.description || ""}`.toLowerCase();
-
-    const isTrailSession =
-      selectedSession?.type?.toLowerCase().includes("trail") ||
-      text.includes("côte") ||
-      text.includes("cote") ||
-      text.includes("montée") ||
-      text.includes("montee") ||
-      text.includes("d+") ||
-      text.includes("dénivelé");
-
-    const vmaMatch = text.match(
-      /(\d+)\s*[x×]\s*(\d+)\s*(m|km)?\s*.*?(\d+)\s*%\s*(de\s*)?vma/
-    );
-
-    const fcMatch = text.match(
-      /(\d+)\s*%\s*(de\s*)?(fc\s*max|fc|max)/
-    );
-
-    const seuilMatch = text.match(
-      /(\d+)\s*[x×]\s*(\d+)'?\s*(au\s*)?seuil/
-    );
-
-    const km10Match = text.match(
-      /(\d+)\s*[x×]\s*(\d+)\s*(m|km)?\s*.*?(allure\s*)?(10\s?km)/
-    );
-
-    const allureMatch = text.match(
-      /allure\s*(\d+)'(\d{1,2})"?/
-    );
-
-    if (vmaMatch && profileVma) {
-      const repetitions = Number(vmaMatch[1]);
-      const distance = vmaMatch[3] === "km" ? Number(vmaMatch[2]) * 1000 : Number(vmaMatch[2]);
-      const percent = Number(vmaMatch[4]);
-      const vma = Number(profileVma);
-      const speed = (vma * percent) / 100;
-      const pace = 60 / speed;
-      const timeSeconds = (distance / 1000) * pace * 60;
-
-      return { type: "vma", repetitions, distance, percent, vma, pace, timeSeconds };
-    }
-
-    if (fcMatch && profileFcMax) {
-      const percent = Number(fcMatch[1]);
-      const fcMax = Number(profileFcMax);
-      const targetFc = Math.round((fcMax * percent) / 100);
-
-      return { type: "fc", percent, fcMax, targetFc };
-    }
-
-    if (seuilMatch && profileVma) {
-      const repetitions = Number(seuilMatch[1]);
-      const durationMin = Number(seuilMatch[2]);
-      const vma = Number(profileVma);
-      const percent = isTrailSession ? 80 : 83;
-      const speed = (vma * percent) / 100;
-      const pace = 60 / speed;
-
-      return {
-        type: "seuil",
-        surface: isTrailSession ? "trail" : "route",
-        repetitions,
-        durationMin,
-        percent,
-        vma,
-        pace,
-        timeSeconds: durationMin * 60,
-      };
-    }
-
-    if (km10Match && profileVma) {
-      const repetitions = Number(km10Match[1]);
-      const distance = km10Match[3] === "km" ? Number(km10Match[2]) * 1000 : Number(km10Match[2]);
-      const vma = Number(profileVma);
-      const percent = isTrailSession ? 85 : 88;
-      const speed = (vma * percent) / 100;
-      const pace = 60 / speed;
-      const timeSeconds = (distance / 1000) * pace * 60;
-
-      return {
-        type: "10km",
-        surface: isTrailSession ? "trail" : "route",
-        repetitions,
-        distance,
-        percent,
-        vma,
-        pace,
-        timeSeconds,
-      };
-    }
-
-    if (allureMatch) {
-      const minutes = Number(allureMatch[1]);
-      const seconds = Number(allureMatch[2]);
-      const pace = minutes + seconds / 60;
-
-      return { type: "allure", pace };
-    }
-
-    return null;
-  };
-
-  const distanceBetween = (a: any, b: any) => {
-    const R = 6371;
-    const dLat = ((b.lat - a.lat) * Math.PI) / 180;
-    const dLon = ((b.lon - a.lon) * Math.PI) / 180;
-    const lat1 = (a.lat * Math.PI) / 180;
-    const lat2 = (b.lat * Math.PI) / 180;
-
-    const h =
-      Math.sin(dLat / 2) ** 2 +
-      Math.sin(dLon / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
-
-    return 2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
-  };
-
-  const openGpxMap = async () => {
+  async function openGpxMap() {
     if (!selectedSession?.gpx_url) return;
 
     setShowGpxMap(true);
@@ -625,9 +731,8 @@ export default function CalendarApp() {
 
     setTimeout(async () => {
       try {
-        const response = await fetch(selectedSession.gpx_url);
+        const response = await fetch(selectedSession.gpx_url || "");
         const gpxText = await response.text();
-
         const parser = new DOMParser();
         const gpxDoc = parser.parseFromString(gpxText, "application/xml");
 
@@ -654,33 +759,20 @@ export default function CalendarApp() {
           if (diff > elevationThreshold) elevationGain += diff;
         }
 
-        setGpxStats({
-          distance: distance.toFixed(1),
-          elevationGain: Math.round(elevationGain),
-        });
+        setGpxStats({ distance: distance.toFixed(1), elevationGain: Math.round(elevationGain) });
 
-        const mapElement = document.querySelector("#gpx-map");
+        const mapElement = document.querySelector("#gpx-map") as HTMLElement | null;
         if (!mapElement) return;
-
         mapElement.innerHTML = "";
 
-        const map = L.map("gpx-map", { zoomControl: true }).setView(
-          [points[0].lat, points[0].lon],
-          13
-        );
+        const map = L.map("gpx-map", { zoomControl: true }).setView([points[0].lat, points[0].lon], 13);
 
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
           attribution: "© OpenStreetMap",
         }).addTo(map);
 
         const latLngs = points.map((p) => [p.lat, p.lon]) as [number, number][];
-
-        const track = L.polyline(latLngs, {
-          color: "#facc15",
-          weight: 5,
-          opacity: 0.95,
-        }).addTo(map);
-
+        const track = L.polyline(latLngs, { color: "#d4e157", weight: 5, opacity: 0.95 }).addTo(map);
         const start = latLngs[0];
         const end = latLngs[latLngs.length - 1];
         const isLoop = map.distance(start, end) < 30;
@@ -691,9 +783,7 @@ export default function CalendarApp() {
           fillColor: "#22c55e",
           fillOpacity: 1,
           weight: 3,
-        })
-          .addTo(map)
-          .bindPopup(isLoop ? "Départ / Arrivée" : "Départ");
+        }).addTo(map).bindPopup(isLoop ? "Départ / Arrivée" : "Départ");
 
         if (!isLoop) {
           L.circleMarker(end, {
@@ -702,46 +792,16 @@ export default function CalendarApp() {
             fillColor: "#ef4444",
             fillOpacity: 1,
             weight: 3,
-          })
-            .addTo(map)
-            .bindPopup("Arrivée");
+          }).addTo(map).bindPopup("Arrivée");
         }
 
         map.fitBounds(track.getBounds(), { padding: [30, 30] });
         setMapLoaded(true);
-      } catch (error) {
+      } catch {
         alert("Erreur lecture GPX.");
       }
     }, 150);
-  };
-
-  const presentParticipants = participants.filter((p) => p.status === "present");
-  const interestedParticipants = participants.filter((p) => p.status === "interested");
-  const myParticipation = participants.find((p) => p.user_id === user?.id)?.status;
-  const personalGoal: any = getPersonalGoal();
-
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstDayOfMonth = new Date(year, month, 1).getDay();
-  const mondayBasedOffset = firstDayOfMonth === 0 ? 6 : firstDayOfMonth - 1;
-
-  const formatDate = (day: number) =>
-    `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-
-  const sessionsByDate = sessions.reduce((acc, session) => {
-    acc[session.date] = true;
-    return acc;
-  }, {} as Record<string, boolean>);
-
-  const sessionsForSelectedDate = selectedDate
-    ? sessions.filter((session) => session.date === selectedDate)
-    : [];
-
-  const canEditSelectedSession = isAdmin || selectedSession?.created_by === user?.id;
-
-  const displayedParticipantList =
-    showParticipantList === "present" ? presentParticipants : interestedParticipants;
+  }
 
   if (!user) {
     return (
@@ -766,28 +826,20 @@ export default function CalendarApp() {
     <div className="app-screen" onClick={() => showMenu && setShowMenu(false)}>
       <div className="app-container" onClick={(e) => e.stopPropagation()}>
         <header className="calendar-header">
-          <button className="menu-btn" onClick={() => setShowMenu((current) => !current)}>
-            ☰
-          </button>
-
+          <button className="menu-btn" onClick={() => setShowMenu((current) => !current)}>☰</button>
           <button onClick={() => setCurrentDate(new Date(year, month - 1))}>◀</button>
-
           <div>
             <h1>{currentDate.toLocaleString("fr-FR", { month: "long" })} {year}</h1>
             <p>ASM Pau</p>
           </div>
-
           <button onClick={() => setCurrentDate(new Date(year, month + 1))}>▶</button>
         </header>
 
         {showMenu && (
           <div className="side-menu">
-            <button onClick={() => { setActiveTab("calendar"); setShowMenu(false); }}>
-              Calendrier
-            </button>
-            <button onClick={() => { setActiveTab("profile"); setShowMenu(false); }}>
-              Profil
-            </button>
+            <button onClick={() => { setActiveTab("calendar"); setShowMenu(false); }}>Calendrier</button>
+            <button onClick={() => { setActiveTab("profile"); setShowMenu(false); }}>Profil / VMA</button>
+            <button onClick={handleLogout}>Déconnexion</button>
           </div>
         )}
 
@@ -795,9 +847,7 @@ export default function CalendarApp() {
           <>
             <section className="calendar-card">
               <div className="calendar-grid calendar-days">
-                {["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."].map((dayName) => (
-                  <div key={dayName}>{dayName}</div>
-                ))}
+                {WEEK_DAYS.map((dayName) => <div key={dayName}>{dayName}</div>)}
               </div>
 
               <div className="calendar-grid">
@@ -807,7 +857,7 @@ export default function CalendarApp() {
 
                 {Array.from({ length: daysInMonth }, (_, index) => {
                   const day = index + 1;
-                  const dateKey = formatDate(day);
+                  const dateKey = formatDateKey(currentDate, day);
                   const hasSession = sessionsByDate[dateKey];
                   const isSelected = selectedDate === dateKey;
 
@@ -842,6 +892,7 @@ export default function CalendarApp() {
                       <span>{session.start_time} - {session.end_time}</span>
                       {session.type && <small>🏷️ {session.type}</small>}
                       {session.location && <small>📍 {session.location}</small>}
+                      {session.gpx_url && <small>🗺️ GPX disponible</small>}
                     </button>
                   ))
                 ) : (
@@ -855,15 +906,14 @@ export default function CalendarApp() {
         {activeTab === "profile" && (
           <section className="profile-screen">
             <h2>Profil</h2>
-
             <div className="profile-card">
               <div className="form-row">
-                <label>Pseudo :</label>
+                <label>Pseudo</label>
                 <input value={`${firstname} ${lastname.charAt(0).toUpperCase()}.`} disabled />
               </div>
 
               <div className="form-row">
-                <label>Sexe :</label>
+                <label>Sexe</label>
                 <select value={profileSexe} onChange={(e) => setProfileSexe(e.target.value)}>
                   <option value="">Non renseigné</option>
                   <option value="homme">Homme</option>
@@ -872,60 +922,48 @@ export default function CalendarApp() {
               </div>
 
               <div className="form-row">
-                <label>VMA :</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={profileVma}
-                  onChange={(e) => setProfileVma(e.target.value)}
-                  placeholder="Ex : 15"
-                />
+                <label>VMA actuelle</label>
+                <input type="number" step="0.1" value={profileVma} onChange={(e) => setProfileVma(e.target.value)} placeholder="Ex : 15" />
               </div>
 
               <div className="form-row">
-                <label>Distance (km) :</label>
-                <input
-                  type="number"
-                  placeholder="Ex : 10"
-                  value={raceDistance}
-                  onChange={(e) => setRaceDistance(e.target.value)}
-                />
+                <label>FC max</label>
+                <input type="number" value={profileFcMax} onChange={(e) => setProfileFcMax(e.target.value)} placeholder="Ex : 190" />
               </div>
 
-              <div className="form-row">
-                <label>Temps (minutes) :</label>
-                <input
-                  type="number"
-                  placeholder="Ex : 45"
-                  value={raceTime}
-                  onChange={(e) => setRaceTime(e.target.value)}
-                />
+              <div className="personal-goal-card">
+                <h3>Estimer ma VMA</h3>
+                <p>Renseigne une course récente pour obtenir une estimation.</p>
+                <div className="form-row">
+                  <label>Distance</label>
+                  <input type="number" placeholder="Ex : 10" value={raceDistance} onChange={(e) => setRaceDistance(e.target.value)} />
+                </div>
+                <div className="form-row">
+                  <label>Temps en minutes</label>
+                  <input type="number" placeholder="Ex : 45" value={raceTime} onChange={(e) => setRaceTime(e.target.value)} />
+                </div>
+                <button
+                  className="secondary-btn"
+                  onClick={() => {
+                    if (!raceDistance || !raceTime) return;
+                    setProfileVma(estimateVmaFromRace(Number(raceDistance), Number(raceTime)));
+                  }}
+                >
+                  Calculer la VMA
+                </button>
               </div>
 
-              <button
-                className="secondary-btn"
-                onClick={() => {
-                  if (!raceDistance || !raceTime) return;
-                  const estimated = estimateVmaFromRace(Number(raceDistance), Number(raceTime));
-                  setProfileVma(estimated);
-                }}
-              >
-                Estimer ma VMA
-              </button>
+              {profileVma && (
+                <div className="personal-goal-card">
+                  <h3>Repères d'allure</h3>
+                  <p>70% VMA : {formatPace(60 / (Number(profileVma) * 0.7))}</p>
+                  <p>80% VMA : {formatPace(60 / (Number(profileVma) * 0.8))}</p>
+                  <p>90% VMA : {formatPace(60 / (Number(profileVma) * 0.9))}</p>
+                  <p>100% VMA : {formatPace(60 / Number(profileVma))}</p>
+                </div>
+              )}
 
-              <div className="form-row">
-                <label>FC max :</label>
-                <input
-                  type="number"
-                  value={profileFcMax}
-                  onChange={(e) => setProfileFcMax(e.target.value)}
-                  placeholder="Ex : 190"
-                />
-              </div>
-
-              <button className="primary-btn" onClick={saveMyProfile}>
-                Enregistrer le profil
-              </button>
+              <button className="primary-btn" onClick={saveMyProfile}>Enregistrer le profil</button>
             </div>
           </section>
         )}
@@ -933,90 +971,79 @@ export default function CalendarApp() {
         {showCreateForm && (
           <div className="create-modal">
             <div className="create-header">
-              <button onClick={() => setShowCreateForm(false)}>☰</button>
-              <h2>{isEditing ? "Modifier l'événement" : "Ajouter un événement"}</h2>
+              <button onClick={() => setShowCreateForm(false)}>←</button>
+              <h2>{isEditing ? "Modifier la séance" : "Ajouter une séance"}</h2>
             </div>
 
             <div className="create-card">
               <div className="form-row">
-                <label>Titre :</label>
-                <input placeholder="Titre de la séance" value={formTitle} onChange={(e) => setFormTitle(e.target.value)} />
+                <label>Titre</label>
+                <input placeholder="Ex : 8 x 400 m à 95% VMA" value={formTitle} onChange={(e) => setFormTitle(e.target.value)} />
               </div>
 
               <div className="form-row">
-                <label>Type :</label>
+                <label>Type</label>
                 <select value={formType} onChange={(e) => setFormType(e.target.value)}>
                   {SESSION_TYPES.map((type) => <option key={type}>{type}</option>)}
                 </select>
               </div>
 
               <div className="form-row">
-                <label>Objectif personnalisé :</label>
-                <select value={formWorkoutMode} onChange={(e) => setFormWorkoutMode(e.target.value)}>
-                  <option value="">Aucun</option>
-                  <option value="vma">VMA</option>
-                  <option value="fc">FC max</option>
+                <label>Objectif structuré</label>
+                <select value={formWorkoutMode} onChange={(e) => setFormWorkoutMode(e.target.value as WorkoutMode)}>
+                  <option value="">Automatique depuis la description</option>
+                  <option value="vma">Fractionné VMA</option>
+                  <option value="fc">Pourcentage FC max</option>
+                  <option value="seuil">Seuil</option>
+                  <option value="10km">Allure 10 km</option>
                 </select>
               </div>
 
-              {formWorkoutMode === "vma" && (
+              {formWorkoutMode && formWorkoutMode !== "fc" && (
                 <div className="form-row">
-                  <label>Distance fraction :</label>
-                  <input
-                    type="number"
-                    placeholder="Ex : 400"
-                    value={formFractionDistance}
-                    onChange={(e) => setFormFractionDistance(e.target.value)}
-                  />
+                  <label>Distance fraction en mètres</label>
+                  <input type="number" placeholder="Ex : 400" value={formFractionDistance} onChange={(e) => setFormFractionDistance(e.target.value)} />
                 </div>
               )}
 
               {formWorkoutMode && (
                 <div className="form-row">
-                  <label>Intensité (%) :</label>
-                  <input
-                    type="number"
-                    placeholder="Ex : 90"
-                    value={formIntensityPercent}
-                    onChange={(e) => setFormIntensityPercent(e.target.value)}
-                  />
+                  <label>Intensité en %</label>
+                  <input type="number" placeholder="Ex : 90" value={formIntensityPercent} onChange={(e) => setFormIntensityPercent(e.target.value)} />
                 </div>
               )}
 
               <div className="form-row">
-                <label>Ville :</label>
-                <input placeholder="Ville ou lieu" value={formLocation} onChange={(e) => setFormLocation(e.target.value)} />
+                <label>Lieu</label>
+                <input placeholder="Ville ou point de rendez-vous" value={formLocation} onChange={(e) => setFormLocation(e.target.value)} />
               </div>
 
               <div className="form-row description-row">
-                <label>Description :</label>
-                <textarea placeholder="Description et lien éventuel" value={formDescription} onChange={(e) => setFormDescription(e.target.value)} />
+                <label>Description</label>
+                <textarea placeholder="Description, consignes, lien éventuel..." value={formDescription} onChange={(e) => setFormDescription(e.target.value)} />
               </div>
 
               <div className="form-row">
-                <label>Début :</label>
+                <label>Début</label>
                 <input type="time" value={formStartTime} onChange={(e) => setFormStartTime(e.target.value)} />
               </div>
 
               <div className="form-row">
-                <label>Fin :</label>
+                <label>Fin</label>
                 <input type="time" value={formEndTime} onChange={(e) => setFormEndTime(e.target.value)} />
               </div>
 
               <div className="form-row file-row">
-                <label>Image :</label>
+                <label>Image</label>
                 <input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files?.[0] || null)} />
               </div>
 
               <div className="form-row file-row">
-                <label>GPX :</label>
+                <label>Fichier GPX</label>
                 <input type="file" accept=".gpx" onChange={(e) => setGpxFile(e.target.files?.[0] || null)} />
               </div>
 
-              <button className="primary-btn" onClick={handleSaveSession}>
-                {isEditing ? "Modifier l’événement" : "Créer l’événement"}
-              </button>
-
+              <button className="primary-btn" onClick={handleSaveSession}>{isEditing ? "Modifier la séance" : "Créer la séance"}</button>
               <button className="close-floating-btn" onClick={() => setShowCreateForm(false)}>×</button>
             </div>
           </div>
@@ -1034,15 +1061,13 @@ export default function CalendarApp() {
 
               <div className="detail-box">
                 <p>🏷️ {selectedSession.type || "Type non renseigné"}</p>
-                <p>{selectedSession.description || "Aucune description"}</p>
                 <p>📍 {selectedSession.location || "Lieu non renseigné"}</p>
+                <p>{selectedSession.description || "Aucune description"}</p>
 
                 {selectedSession.gpx_url && (
                   <div className="gpx-actions">
-                    <button className="primary-btn" onClick={openGpxMap}>Voir le GPX</button>
-                    <a className="gpx-link" href={selectedSession.gpx_url} target="_blank" rel="noreferrer" download>
-                      Télécharger le GPX
-                    </a>
+                    <button className="primary-btn" onClick={openGpxMap}>Voir la carte GPX</button>
+                    <a className="gpx-link" href={selectedSession.gpx_url} target="_blank" rel="noreferrer" download>Télécharger le GPX</a>
                   </div>
                 )}
               </div>
@@ -1052,7 +1077,6 @@ export default function CalendarApp() {
                   <strong>{interestedParticipants.length}</strong>
                   <span>Intéressés</span>
                 </button>
-
                 <button className="participant-count" onClick={() => setShowParticipantList("present")}>
                   <strong>{presentParticipants.length}</strong>
                   <span>Participants</span>
@@ -1060,10 +1084,7 @@ export default function CalendarApp() {
               </div>
 
               <div className="notification-row">
-                <button
-                  className={`notification-toggle ${notificationEnabled ? "enabled" : ""}`}
-                  onClick={() => setNotificationEnabled(!notificationEnabled)}
-                >
+                <button className={`notification-toggle ${notificationEnabled ? "enabled" : ""}`} onClick={() => setNotificationEnabled(!notificationEnabled)}>
                   <span />
                 </button>
                 <p>Notification</p>
@@ -1075,11 +1096,11 @@ export default function CalendarApp() {
 
                   {personalGoal.type === "vma" && (
                     <>
-                      <p>Séance : {personalGoal.repetitions} × {personalGoal.distance} m</p>
+                      <p>Séance : {personalGoal.repetitions ? `${personalGoal.repetitions} × ` : ""}{personalGoal.distance} m</p>
                       <p>VMA utilisée : {personalGoal.vma} km/h</p>
                       <p>Intensité : {personalGoal.percent}% VMA</p>
-                      <p>Allure cible : {formatPace(personalGoal.pace ?? 0)}</p>
-                      <p>Temps cible : {formatTime(personalGoal.timeSeconds ?? 0)} par fraction</p>
+                      <p>Allure cible : {formatPace(personalGoal.pace)}</p>
+                      <p>Temps cible : {formatDuration(personalGoal.timeSeconds)} par fraction</p>
                     </>
                   )}
 
@@ -1091,102 +1112,56 @@ export default function CalendarApp() {
                     </>
                   )}
 
-                  {personalGoal.type === "seuil" && (
+                  {(personalGoal.type === "seuil" || personalGoal.type === "10km") && (
                     <>
-                      <p>Séance : {personalGoal.repetitions} × {personalGoal.durationMin}'</p>
+                      {personalGoal.distance && <p>Distance : {personalGoal.distance} m</p>}
                       <p>Terrain : {personalGoal.surface === "trail" ? "Trail / côte" : "Route"}</p>
                       <p>VMA utilisée : {personalGoal.vma} km/h</p>
                       <p>Intensité : {personalGoal.percent}% VMA</p>
-                      {personalGoal.surface === "trail" ? (
-                        <p>Objectif : effort seuil contrôlé, sans chercher l’allure route.</p>
-                      ) : (
-                        <p>Allure seuil : {formatPace(personalGoal.pace ?? 0)}</p>
-                      )}
+                      <p>Allure cible : {formatPace(personalGoal.pace)}</p>
+                      {personalGoal.timeSeconds && <p>Temps cible : {formatDuration(personalGoal.timeSeconds)}</p>}
                     </>
                   )}
 
-                  {personalGoal.type === "10km" && (
-                    <>
-                      <p>Séance : {personalGoal.repetitions} × {personalGoal.distance} m</p>
-                      <p>Terrain : {personalGoal.surface === "trail" ? "Trail / côte" : "Route"}</p>
-                      <p>VMA utilisée : {personalGoal.vma} km/h</p>
-                      <p>Intensité : {personalGoal.percent}% VMA</p>
-                      {personalGoal.surface === "trail" ? (
-                        <p>Objectif : effort proche allure 10 km, à adapter au terrain.</p>
-                      ) : (
-                        <>
-                          <p>Allure 10 km : {formatPace(personalGoal.pace ?? 0)}</p>
-                          <p>Temps cible : {formatTime(personalGoal.timeSeconds ?? 0)} par fraction</p>
-                        </>
-                      )}
-                    </>
-                  )}
-
-                  {personalGoal.type === "allure" && (
-                    <p>Allure cible : {formatPace(personalGoal.pace ?? 0)}</p>
-                  )}
-                </div>
-              )}
-
-              {showParticipantList && (
-                <div className="participant-modal">
-                  <div className="participant-modal-card">
-                    <div className="participant-list-header">
-                      <h3>{showParticipantList === "present" ? "Participants" : "Intéressés"}</h3>
-                      <button onClick={() => setShowParticipantList(null)}>×</button>
-                    </div>
-
-                    {displayedParticipantList.length > 0 ? (
-                      displayedParticipantList.map((participant) => (
-                        <div key={participant.id} className="participant-row">
-                          {participant.firstname} {participant.lastname}
-                        </div>
-                      ))
-                    ) : (
-                      <p className="empty-message">Aucun adhérent</p>
-                    )}
-                  </div>
+                  {personalGoal.type === "allure" && <p>Allure cible : {formatPace(personalGoal.pace)}</p>}
                 </div>
               )}
 
               <div className="floating-admin-menu">
                 {showAdminActions && (
                   <div className="floating-admin-actions">
-                    <button onClick={() => handleParticipation("interested")} title="Intéressé">
-                      ☆
-                    </button>
-
-                    <button onClick={() => handleParticipation("present")} title="Présent">
-                      ✓
-                    </button>
-
-                    {isAdmin && (
-                      <button onClick={handleDuplicateSession} title="Dupliquer">
-                        📋
-                      </button>
-                    )}
-
+                    <button onClick={() => handleParticipation("interested")} title="Intéressé">☆</button>
+                    <button onClick={() => handleParticipation("present")} title="Présent">✓</button>
+                    {isAdmin && <button onClick={handleDuplicateSession} title="Dupliquer">📋</button>}
                     {canEditSelectedSession && (
                       <>
-                        <button onClick={openEditForm} title="Modifier">
-                          ✏️
-                        </button>
-
-                        <button onClick={handleDeleteSession} title="Supprimer">
-                          🗑️
-                        </button>
+                        <button onClick={openEditForm} title="Modifier">✏️</button>
+                        <button onClick={handleDeleteSession} title="Supprimer">🗑️</button>
                       </>
                     )}
                   </div>
                 )}
-
-                <button
-                  className="floating-admin-main"
-                  onClick={() => setShowAdminActions((current) => !current)}
-                >
-                  {showAdminActions ? "×" : "‹"}
-                </button>
+                <button className={`floating-admin-main ${showAdminActions ? "open" : ""}`} onClick={() => setShowAdminActions((current) => !current)}>{showAdminActions ? "×" : "‹"}</button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {showParticipantList && (
+          <div className="participant-modal">
+            <div className="participant-modal-card">
+              <div className="participant-list-header">
+                <h3>{showParticipantList === "present" ? "Participants" : "Intéressés"}</h3>
+                <button onClick={() => setShowParticipantList(null)}>×</button>
+              </div>
+
+              {displayedParticipantList.length > 0 ? (
+                displayedParticipantList.map((participant) => (
+                  <div key={participant.id} className="participant-row">{participant.firstname} {participant.lastname}</div>
+                ))
+              ) : (
+                <p className="empty-message">Aucun adhérent</p>
+              )}
             </div>
           </div>
         )}
@@ -1194,16 +1169,7 @@ export default function CalendarApp() {
         {showGpxMap && (
           <div className="gpx-map-modal">
             <div className="gpx-map-header">
-              <button
-                onClick={() => {
-                  setShowGpxMap(false);
-                  setMapLoaded(false);
-                  setGpxStats(null);
-                }}
-              >
-                ←
-              </button>
-
+              <button onClick={() => { setShowGpxMap(false); setMapLoaded(false); setGpxStats(null); }}>←</button>
               <h2>Parcours</h2>
             </div>
 
@@ -1211,21 +1177,12 @@ export default function CalendarApp() {
 
             {gpxStats && (
               <div className="gpx-stats-panel">
-                <div>
-                  <strong>{gpxStats.distance} km</strong>
-                  <span>Distance</span>
-                </div>
-
-                <div>
-                  <strong>+{gpxStats.elevationGain} m</strong>
-                  <span>Dénivelé +</span>
-                </div>
+                <div><strong>{gpxStats.distance} km</strong><span>Distance</span></div>
+                <div><strong>+{gpxStats.elevationGain} m</strong><span>Dénivelé +</span></div>
               </div>
             )}
 
-            {!mapLoaded && (
-              <p className="map-loading">Chargement du parcours...</p>
-            )}
+            {!mapLoaded && <p className="map-loading">Chargement du parcours...</p>}
           </div>
         )}
       </div>
