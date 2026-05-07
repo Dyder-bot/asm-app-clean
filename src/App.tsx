@@ -292,6 +292,7 @@ export default function CalendarApp() {
   const [profileSexe, setProfileSexe] = useState("");
   const [profileVma, setProfileVma] = useState("");
   const [profileFcMax, setProfileFcMax] = useState("");
+  const [profileFcRest, setProfileFcRest] = useState("");
   const [raceDistance, setRaceDistance] = useState("");
   const [raceTime, setRaceTime] = useState("");
 
