@@ -893,4 +893,15 @@ input:disabled {
 .participant-count.active-choice span {
   color: #d4e157 !important;
 }
+  .participant-list-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.participant-list-actions .secondary-btn {
+  font-size: 14px;
+  padding: 12px;
+}
 }
