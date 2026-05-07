@@ -53,11 +53,6 @@ type Participant = {
   lastname?: string;
 };
 
-type MyParticipation = {
-  session_id: string;
-  status: ParticipationStatus;
-};
-
 type PersonalGoal =
   | {
       type: "vma";
@@ -365,7 +360,6 @@ export default function CalendarApp() {
     if (!user) return;
     fetchSessions();
     fetchMyProfile();
-    fetchMyParticipations();
   }, [user]);
 
   useEffect(() => {
@@ -733,7 +727,6 @@ export default function CalendarApp() {
     }
 
     fetchParticipants(selectedSession.id);
-    fetchMyParticipations();
     setShowAdminActions(false);
   }
 
