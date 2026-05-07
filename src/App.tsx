@@ -974,13 +974,106 @@ export default function CalendarApp() {
         )}
 
         {activeTab === "mySessions" && (
-          <section className="panel-screen">
-            <h2>Mes performances</h2>
-            <p className="screen-intro">Toutes les séances auxquelles tu es inscrit ou intéressé.</p>
-            {mySessions.length > 0
-              ? mySessions.map((session) => renderSessionCard(session, true))
-              : <p className="empty-message">Tu n’es inscrit à aucune séance pour le moment.</p>}
-          </section>
+         <section className="performance-screen">
+  <h2>Mes performances</h2>
+
+  <div className="performance-card">
+    <h3>🏆 Performances théoriques</h3>
+    <p>Estimations basées sur ta VMA.</p>
+
+    <table className="performance-table">
+      <thead>
+        <tr>
+          <th>Distance</th>
+          <th>% VMA</th>
+          <th>Temps</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>10 km</td>
+          <td>90%</td>
+          <td>{profileVma ? formatDuration((10 / (Number(profileVma) * 0.9)) * 3600) : "-"}</td>
+        </tr>
+        <tr>
+          <td>Semi</td>
+          <td>85%</td>
+          <td>{profileVma ? formatDuration((21.1 / (Number(profileVma) * 0.85)) * 3600) : "-"}</td>
+        </tr>
+        <tr>
+          <td>Marathon</td>
+          <td>80%</td>
+          <td>{profileVma ? formatDuration((42.195 / (Number(profileVma) * 0.8)) * 3600) : "-"}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div className="performance-card">
+    <h3>⚡ Zones d’allure</h3>
+
+    <table className="performance-table">
+      <thead>
+        <tr>
+          <th>Zone</th>
+          <th>% VMA</th>
+          <th>Allure</th>
+        </tr>
+      </thead>
+      <tbody>
+        {[70, 75, 80, 85, 90, 95, 100, 105, 110].map((percent) => (
+          <tr key={percent}>
+            <td>{percent}%</td>
+            <td>{percent}%</td>
+            <td>
+              {profileVma
+                ? formatPace(60 / (Number(profileVma) * (percent / 100)))
+                : "-"}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <div className="performance-card">
+    <h3>❤️ Zones cardiaques Karvonen</h3>
+
+    <table className="performance-table">
+      <thead>
+        <tr>
+          <th>Zone</th>
+          <th>% réserve</th>
+          <th>FC cible</th>
+        </tr>
+      </thead>
+      <tbody>
+        {[
+          ["Endurance", 60],
+          ["SV1", 75],
+          ["Tempo", 80],
+          ["SV2", 88],
+          ["Intense", 92],
+        ].map(([label, percent]) => {
+          const fcMax = Number(profileFcMax);
+          const fcRest = Number(profileFcRest);
+          const fc =
+            fcMax && fcRest
+              ? Math.round(fcRest + (fcMax - fcRest) * (Number(percent) / 100))
+              : null;
+
+          return (
+            <tr key={label}>
+              <td>{label}</td>
+              <td>{percent}%</td>
+              <td>{fc ? `${fc} bpm` : "-"}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+</section>
         )}
 
         {activeTab === "notifications" && (
