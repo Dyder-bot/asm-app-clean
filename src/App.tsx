@@ -298,6 +298,7 @@ export default function CalendarApp() {
 
   const [myParticipations, setMyParticipations] = useState<MyParticipation[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<any[]>([]);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
 
