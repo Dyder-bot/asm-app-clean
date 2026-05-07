@@ -296,7 +296,6 @@ export default function CalendarApp() {
   const [raceDistance, setRaceDistance] = useState("");
   const [raceTime, setRaceTime] = useState("");
 
-  const [sessions, setSessions] = useState<Session[]>([]);
   const [myParticipations, setMyParticipations] = useState<MyParticipation[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
