@@ -1164,16 +1164,29 @@ export default function CalendarApp() {
                 )}
               </div>
 
-              <div className="participation-summary">
-                <button className="participant-count" onClick={() => setShowParticipantList("interested")}>
-                  <strong>{interestedParticipants.length}</strong>
-                  <span>Intéressés</span>
-                </button>
-                <button className="participant-count" onClick={() => setShowParticipantList("present")}>
-                  <strong>{presentParticipants.length}</strong>
-                  <span>Participants</span>
-                </button>
-              </div>
+             <div className="participation-summary">
+
+  <button
+    className={`participant-count ${
+      myParticipation === "interested" ? "active-choice" : ""
+    }`}
+    onClick={() => handleParticipation("interested")}
+  >
+    <strong>{interestedParticipants.length}</strong>
+    <span>Intéressés</span>
+  </button>
+
+  <button
+    className={`participant-count ${
+      myParticipation === "present" ? "active-choice" : ""
+    }`}
+    onClick={() => handleParticipation("present")}
+  >
+    <strong>{presentParticipants.length}</strong>
+    <span>Participants</span>
+  </button>
+
+</div>
 
               {personalGoal && (
                 <div className="personal-goal-card">
