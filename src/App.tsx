@@ -1165,6 +1165,21 @@ export default function CalendarApp() {
               </div>
 
              <div className="participation-summary">
+               <div className="participant-list-actions">
+  <button
+    className="secondary-btn"
+    onClick={() => setShowParticipantList("interested")}
+  >
+    Voir les intéressés
+  </button>
+
+  <button
+    className="secondary-btn"
+    onClick={() => setShowParticipantList("present")}
+  >
+    Voir les participants
+  </button>
+</div>
 
   <button
     className={`participant-count ${
