@@ -350,15 +350,6 @@ export default function CalendarApp() {
     ? sessions.filter((session) => session.date === selectedDate)
     : [];
 
-  const mySessions = useMemo(() => {
-    const bySessionId = new Map(myParticipations.map((row) => [row.session_id, row.status]));
-
-    return sessions
-      .filter((session) => bySessionId.has(session.id))
-      .map((session) => ({ ...session, participationStatus: bySessionId.get(session.id) }))
-      .sort((a, b) => `${a.date} ${a.start_time || ""}`.localeCompare(`${b.date} ${b.start_time || ""}`));
-  }, [myParticipations, sessions]);
-
   const displayedParticipantList =
     showParticipantList === "present" ? presentParticipants : interestedParticipants;
 
