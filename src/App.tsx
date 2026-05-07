@@ -23,7 +23,7 @@ const SESSION_TYPES = [
 
 const WEEK_DAYS = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
 
-type AppTab = "calendar" | "profile";
+type AppTab = "calendar" | "mySessions" | "profile" | "notifications";
 type ParticipationStatus = "present" | "interested";
 type WorkoutMode = "" | "vma" | "fc" | "seuil" | "10km" | "allure";
 
@@ -51,6 +51,11 @@ type Participant = {
   status: ParticipationStatus;
   firstname?: string;
   lastname?: string;
+};
+
+type MyParticipation = {
+  session_id: string;
+  status: ParticipationStatus;
 };
 
 type PersonalGoal =
@@ -91,6 +96,16 @@ function pad(value: number) {
 
 function formatDateKey(date: Date, day: number) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(day)}`;
+}
+
+function formatDisplayDate(dateKey?: string | null) {
+  if (!dateKey) return "";
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString("fr-FR", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
 }
 
 function formatPace(paceMinKm: number) {
@@ -152,18 +167,14 @@ function calculateTargetFromStructuredSession(
   }
 
   if (mode === "fc" && percent > 0 && fcMax > 0) {
-    return {
-      type: "fc",
-      percent,
-      fcMax,
-      targetFc: Math.round((fcMax * percent) / 100),
-    };
+    return { type: "fc", percent, fcMax, targetFc: Math.round((fcMax * percent) / 100) };
   }
 
   if ((mode === "seuil" || mode === "10km") && percent > 0 && vma > 0) {
     const speed = (vma * percent) / 100;
     const pace = 60 / speed;
     const timeSeconds = distance > 0 ? (distance / 1000) * pace * 60 : undefined;
+
     return {
       type: mode,
       surface: session.type?.toLowerCase().includes("trail") ? "trail" : "route",
@@ -184,6 +195,8 @@ function calculateTargetFromText(
   profileFcMax: string
 ): PersonalGoal | null {
   const text = `${session.title || ""} ${session.description || ""}`.toLowerCase();
+  const vma = Number(profileVma || 0);
+  const fcMax = Number(profileFcMax || 0);
 
   const isTrailSession =
     session.type?.toLowerCase().includes("trail") ||
@@ -194,13 +207,7 @@ function calculateTargetFromText(
     text.includes("d+") ||
     text.includes("dénivelé");
 
-  const vma = Number(profileVma || 0);
-  const fcMax = Number(profileFcMax || 0);
-
-  const vmaMatch = text.match(
-    /(\d+)\s*[x×]\s*(\d+)\s*(m|km)?\s*.*?(\d+)\s*%\s*(de\s*)?vma/
-  );
-
+  const vmaMatch = text.match(/(\d+)\s*[x×]\s*(\d+)\s*(m|km)?\s*.*?(\d+)\s*%\s*(de\s*)?vma/);
   const fcMatch = text.match(/(\d+)\s*%\s*(de\s*)?(fc\s*max|fc|max)/);
   const seuilMatch = text.match(/(\d+)\s*[x×]\s*(\d+)'?\s*(au\s*)?seuil/);
   const km10Match = text.match(/(\d+)\s*[x×]\s*(\d+)\s*(m|km)?\s*.*?(allure\s*)?(10\s?km)/);
@@ -289,6 +296,7 @@ export default function CalendarApp() {
   const [raceTime, setRaceTime] = useState("");
 
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [myParticipations, setMyParticipations] = useState<MyParticipation[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -298,7 +306,9 @@ export default function CalendarApp() {
 
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [showParticipantList, setShowParticipantList] = useState<ParticipationStatus | null>(null);
-  const [notificationEnabled, setNotificationEnabled] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
+    return window.localStorage.getItem("asm-notifications") === "true";
+  });
 
   const [showGpxMap, setShowGpxMap] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -326,6 +336,7 @@ export default function CalendarApp() {
   const interestedParticipants = participants.filter((p) => p.status === "interested");
   const myParticipation = participants.find((p) => p.user_id === user?.id)?.status;
   const canEditSelectedSession = isAdmin || selectedSession?.created_by === user?.id;
+  const displayName = firstname || lastname ? `${firstname} ${lastname}`.trim() : user?.email || "Adhérent";
 
   const sessionsByDate = useMemo(() => {
     return sessions.reduce((acc, session) => {
@@ -337,6 +348,15 @@ export default function CalendarApp() {
   const sessionsForSelectedDate = selectedDate
     ? sessions.filter((session) => session.date === selectedDate)
     : [];
+
+  const mySessions = useMemo(() => {
+    const bySessionId = new Map(myParticipations.map((row) => [row.session_id, row.status]));
+
+    return sessions
+      .filter((session) => bySessionId.has(session.id))
+      .map((session) => ({ ...session, participationStatus: bySessionId.get(session.id) }))
+      .sort((a, b) => `${a.date} ${a.start_time || ""}`.localeCompare(`${b.date} ${b.start_time || ""}`));
+  }, [myParticipations, sessions]);
 
   const displayedParticipantList =
     showParticipantList === "present" ? presentParticipants : interestedParticipants;
@@ -354,6 +374,7 @@ export default function CalendarApp() {
     if (!user) return;
     fetchSessions();
     fetchMyProfile();
+    fetchMyParticipations();
   }, [user]);
 
   useEffect(() => {
@@ -422,6 +443,18 @@ export default function CalendarApp() {
     }
 
     setSessions((data || []) as Session[]);
+  }
+
+  async function fetchMyParticipations() {
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from("participants")
+      .select("session_id, status")
+      .eq("user_id", user.id);
+
+    if (error) return;
+    setMyParticipations((data || []) as MyParticipation[]);
   }
 
   async function fetchParticipants(sessionId: string) {
@@ -585,13 +618,13 @@ export default function CalendarApp() {
       : selectedSession?.gpx_url || null;
 
     const payload = {
-      title: formTitle.trim(),
+      title: formTitle.trim().charAt(0).toUpperCase() + formTitle.trim().slice(1),
       type: formType,
       date: selectedSession?.date || selectedDate,
       start_time: formStartTime,
       end_time: formEndTime,
-      location: formLocation,
-      description: formDescription,
+      location: formLocation.trim(),
+      description: formDescription.trim(),
       image_url: imageUrl,
       gpx_url: gpxUrl,
       created_by: user.id,
@@ -703,6 +736,7 @@ export default function CalendarApp() {
 
     if (currentStatus === status) {
       fetchParticipants(selectedSession.id);
+      fetchMyParticipations();
       setShowAdminActions(false);
       return;
     }
@@ -719,7 +753,14 @@ export default function CalendarApp() {
     }
 
     fetchParticipants(selectedSession.id);
+    fetchMyParticipations();
     setShowAdminActions(false);
+  }
+
+  function toggleNotifications() {
+    const next = !notificationsEnabled;
+    setNotificationsEnabled(next);
+    window.localStorage.setItem("asm-notifications", String(next));
   }
 
   async function openGpxMap() {
@@ -803,12 +844,31 @@ export default function CalendarApp() {
     }, 150);
   }
 
+  function renderSessionCard(session: Session & { participationStatus?: ParticipationStatus }, compact = false) {
+    return (
+      <button key={session.id} onClick={() => { setSelectedSession(session); setActiveTab("calendar"); }} className={`session-card ${compact ? "compact" : ""}`}>
+        {session.image_url && <img className="session-thumb" src={session.image_url} alt="" />}
+        <div className="session-card-content">
+          <strong>{session.title}</strong>
+          <span>{formatDisplayDate(session.date)} • {session.start_time} - {session.end_time}</span>
+          <small>🏷️ {session.type || "Séance"}</small>
+          {session.location && <small>📍 {session.location}</small>}
+          {session.gpx_url && <small>🗺️ GPX disponible</small>}
+          {session.participationStatus && (
+            <small className="status-badge">{session.participationStatus === "present" ? "✓ Participant" : "☆ Intéressé"}</small>
+          )}
+        </div>
+      </button>
+    );
+  }
+
   if (!user) {
     return (
       <div className="app-screen auth-screen">
         <div className="auth-card">
+          <img className="auth-logo" src="/logo-asm.png" alt="ASM Pau" />
           <h1>ASM Pau</h1>
-          <p>Course à pied</p>
+          <p>Calendrier des sorties et entraînements</p>
 
           <input placeholder="Prénom" value={firstname} onChange={(e) => setFirstname(e.target.value)} />
           <input placeholder="Nom" value={lastname} onChange={(e) => setLastname(e.target.value)} />
@@ -824,24 +884,42 @@ export default function CalendarApp() {
 
   return (
     <div className="app-screen" onClick={() => showMenu && setShowMenu(false)}>
+      {showMenu && <div className="menu-backdrop" />}
+
+      <aside className={`side-menu ${showMenu ? "open" : ""}`} onClick={(e) => e.stopPropagation()}>
+        <div className="side-menu-top">
+          <img className="side-logo" src="/logo-asm.png" alt="ASM Pau" />
+          <div>
+            <p>Bienvenue</p>
+            <h2>{displayName}</h2>
+          </div>
+        </div>
+
+        <nav className="side-nav">
+          <button className={activeTab === "calendar" ? "active" : ""} onClick={() => { setActiveTab("calendar"); setShowMenu(false); }}>📅 Calendrier</button>
+          <button className={activeTab === "mySessions" ? "active" : ""} onClick={() => { setActiveTab("mySessions"); setShowMenu(false); }}>👤 Mes séances</button>
+          <button className={activeTab === "profile" ? "active" : ""} onClick={() => { setActiveTab("profile"); setShowMenu(false); }}>⚙️ Profil</button>
+          <button className={activeTab === "notifications" ? "active" : ""} onClick={() => { setActiveTab("notifications"); setShowMenu(false); }}>🔔 Notifications</button>
+          <button onClick={handleLogout}>↪ Déconnexion</button>
+        </nav>
+
+        <div className="side-club-card">
+          <span>Club</span>
+          <strong>ASM Pau</strong>
+          <small>Version moderne</small>
+        </div>
+      </aside>
+
       <div className="app-container" onClick={(e) => e.stopPropagation()}>
         <header className="calendar-header">
           <button className="menu-btn" onClick={() => setShowMenu((current) => !current)}>☰</button>
           <button onClick={() => setCurrentDate(new Date(year, month - 1))}>◀</button>
           <div>
             <h1>{currentDate.toLocaleString("fr-FR", { month: "long" })} {year}</h1>
-            <p>ASM Pau</p>
+            <p>{activeTab === "calendar" ? "ASM Pau" : activeTab === "mySessions" ? "Mes séances" : activeTab === "profile" ? "Profil" : "Notifications"}</p>
           </div>
           <button onClick={() => setCurrentDate(new Date(year, month + 1))}>▶</button>
         </header>
-
-        {showMenu && (
-          <div className="side-menu">
-            <button onClick={() => { setActiveTab("calendar"); setShowMenu(false); }}>Calendrier</button>
-            <button onClick={() => { setActiveTab("profile"); setShowMenu(false); }}>Profil / VMA</button>
-            <button onClick={handleLogout}>Déconnexion</button>
-          </div>
-        )}
 
         {activeTab === "calendar" && (
           <>
@@ -851,10 +929,7 @@ export default function CalendarApp() {
               </div>
 
               <div className="calendar-grid">
-                {Array.from({ length: mondayBasedOffset }, (_, index) => (
-                  <div key={`empty-${index}`} className="calendar-empty" />
-                ))}
-
+                {Array.from({ length: mondayBasedOffset }, (_, index) => <div key={`empty-${index}`} className="calendar-empty" />)}
                 {Array.from({ length: daysInMonth }, (_, index) => {
                   const day = index + 1;
                   const dateKey = formatDateKey(currentDate, day);
@@ -881,26 +956,43 @@ export default function CalendarApp() {
             {selectedDate && !selectedSession && (
               <section className="session-section">
                 <div className="section-title-row">
-                  <h2>Séances du {selectedDate}</h2>
+                  <h2>Séances du {formatDisplayDate(selectedDate)}</h2>
                   <button className="floating-add-btn" onClick={openCreateForm}>+</button>
                 </div>
 
-                {sessionsForSelectedDate.length > 0 ? (
-                  sessionsForSelectedDate.map((session) => (
-                    <button key={session.id} onClick={() => setSelectedSession(session)} className="session-card">
-                      <strong>{session.title}</strong>
-                      <span>{session.start_time} - {session.end_time}</span>
-                      {session.type && <small>🏷️ {session.type}</small>}
-                      {session.location && <small>📍 {session.location}</small>}
-                      {session.gpx_url && <small>🗺️ GPX disponible</small>}
-                    </button>
-                  ))
-                ) : (
-                  <p className="empty-message">Aucune séance</p>
-                )}
+                {sessionsForSelectedDate.length > 0
+                  ? sessionsForSelectedDate.map((session) => renderSessionCard(session))
+                  : <p className="empty-message">Aucune séance</p>}
               </section>
             )}
           </>
+        )}
+
+        {activeTab === "mySessions" && (
+          <section className="panel-screen">
+            <h2>Mes séances</h2>
+            <p className="screen-intro">Toutes les séances auxquelles tu es inscrit ou intéressé.</p>
+            {mySessions.length > 0
+              ? mySessions.map((session) => renderSessionCard(session, true))
+              : <p className="empty-message">Tu n’es inscrit à aucune séance pour le moment.</p>}
+          </section>
+        )}
+
+        {activeTab === "notifications" && (
+          <section className="panel-screen">
+            <h2>Notifications</h2>
+            <div className="profile-card">
+              <div className="notification-settings-row">
+                <div>
+                  <strong>Notifications de l’application</strong>
+                  <p>Préférence globale. Les vraies notifications push seront finalisées avec la PWA.</p>
+                </div>
+                <button className={`notification-toggle ${notificationsEnabled ? "enabled" : ""}`} onClick={toggleNotifications}>
+                  <span />
+                </button>
+              </div>
+            </div>
+          </section>
         )}
 
         {activeTab === "profile" && (
@@ -955,7 +1047,7 @@ export default function CalendarApp() {
 
               {profileVma && (
                 <div className="personal-goal-card">
-                  <h3>Repères d'allure</h3>
+                  <h3>Repères d’allure</h3>
                   <p>70% VMA : {formatPace(60 / (Number(profileVma) * 0.7))}</p>
                   <p>80% VMA : {formatPace(60 / (Number(profileVma) * 0.8))}</p>
                   <p>90% VMA : {formatPace(60 / (Number(profileVma) * 0.9))}</p>
@@ -1055,7 +1147,7 @@ export default function CalendarApp() {
               <button className="back-btn" onClick={() => setSelectedSession(null)}>⬅ Retour</button>
 
               <h2>{selectedSession.title}</h2>
-              <p className="detail-date">{selectedSession.date} • {selectedSession.start_time} - {selectedSession.end_time}</p>
+              <p className="detail-date">{formatDisplayDate(selectedSession.date)} • {selectedSession.start_time} - {selectedSession.end_time}</p>
 
               {selectedSession.image_url && <img src={selectedSession.image_url} alt={selectedSession.title} />}
 
@@ -1083,17 +1175,9 @@ export default function CalendarApp() {
                 </button>
               </div>
 
-              <div className="notification-row">
-                <button className={`notification-toggle ${notificationEnabled ? "enabled" : ""}`} onClick={() => setNotificationEnabled(!notificationEnabled)}>
-                  <span />
-                </button>
-                <p>Notification</p>
-              </div>
-
               {personalGoal && (
                 <div className="personal-goal-card">
                   <h3>🎯 Mon objectif personnalisé</h3>
-
                   {personalGoal.type === "vma" && (
                     <>
                       <p>Séance : {personalGoal.repetitions ? `${personalGoal.repetitions} × ` : ""}{personalGoal.distance} m</p>
@@ -1103,7 +1187,6 @@ export default function CalendarApp() {
                       <p>Temps cible : {formatDuration(personalGoal.timeSeconds)} par fraction</p>
                     </>
                   )}
-
                   {personalGoal.type === "fc" && (
                     <>
                       <p>FC max utilisée : {personalGoal.fcMax} bpm</p>
@@ -1111,7 +1194,6 @@ export default function CalendarApp() {
                       <p>Fréquence cible : {personalGoal.targetFc} bpm</p>
                     </>
                   )}
-
                   {(personalGoal.type === "seuil" || personalGoal.type === "10km") && (
                     <>
                       {personalGoal.distance && <p>Distance : {personalGoal.distance} m</p>}
@@ -1122,7 +1204,6 @@ export default function CalendarApp() {
                       {personalGoal.timeSeconds && <p>Temps cible : {formatDuration(personalGoal.timeSeconds)}</p>}
                     </>
                   )}
-
                   {personalGoal.type === "allure" && <p>Allure cible : {formatPace(personalGoal.pace)}</p>}
                 </div>
               )}
