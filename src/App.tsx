@@ -1164,80 +1164,69 @@ export default function CalendarApp() {
                 )}
               </div>
 
-             <div className="participation-grid">
-  <div className="participation-column">
-    <button
-      className={`participant-count ${
-        myParticipation === "interested" ? "active-choice" : ""
-      }`}
-      onClick={() => handleParticipation("interested")}
-    >
-      <strong>{interestedParticipants.length}</strong>
-      <span>Intéressés</span>
-    </button>
+                           <div className="participation-grid">
+                <div className="participation-column">
+                  <button
+                    className={`participant-count ${
+                      myParticipation === "interested" ? "active-choice" : ""
+                    }`}
+                    onClick={() => handleParticipation("interested")}
+                  >
+                    <strong>{interestedParticipants.length}</strong>
+                    <span>Intéressés</span>
+                  </button>
 
-    <button
-      className="secondary-btn small-btn"
-      onClick={() => setShowParticipantList("interested")}
-    >
-      Voir les intéressés
-    </button>
-  </div>
+                  <button
+                    className="secondary-btn small-btn"
+                    onClick={() => setShowParticipantList("interested")}
+                  >
+                    Voir les intéressés
+                  </button>
+                </div>
 
-  <div className="participation-column">
-    <button
-      className={`participant-count ${
-        myParticipation === "present" ? "active-choice" : ""
-      }`}
-      onClick={() => handleParticipation("present")}
-    >
-      <strong>{presentParticipants.length}</strong>
-      <span>Participants</span>
-    </button>
+                <div className="participation-column">
+                  <button
+                    className={`participant-count ${
+                      myParticipation === "present" ? "active-choice" : ""
+                    }`}
+                    onClick={() => handleParticipation("present")}
+                  >
+                    <strong>{presentParticipants.length}</strong>
+                    <span>Participants</span>
+                  </button>
 
-    <button
-      className="secondary-btn small-btn"
-      onClick={() => setShowParticipantList("present")}
-    >
-      Voir les participants
-    </button>
-  </div>
-</div>
-
-  <button
-    className={`participant-count ${
-      myParticipation === "interested" ? "active-choice" : ""
-    }`}
-    onClick={() => handleParticipation("interested")}
-  >
-    <strong>{interestedParticipants.length}</strong>
-    <span>Intéressés</span>
-  </button>
-
-  <button
-    className={`participant-count ${
-      myParticipation === "present" ? "active-choice" : ""
-    }`}
-    onClick={() => handleParticipation("present")}
-  >
-    <strong>{presentParticipants.length}</strong>
-    <span>Participants</span>
-  </button>
-
-</div>
+                  <button
+                    className="secondary-btn small-btn"
+                    onClick={() => setShowParticipantList("present")}
+                  >
+                    Voir les participants
+                  </button>
+                </div>
+              </div>
 
               {personalGoal && (
                 <div className="personal-goal-card">
                   <h3>🎯 Mon objectif personnalisé</h3>
+
                   {personalGoal.type === "vma" && (
                     <>
-                      <p>Séance : {personalGoal.repetitions ? `${personalGoal.repetitions} × ` : ""}{personalGoal.distance} m</p>
+                      <p>
+                        Séance :{" "}
+                        {personalGoal.repetitions
+                          ? `${personalGoal.repetitions} × `
+                          : ""}
+                        {personalGoal.distance} m
+                      </p>
                       <p>VMA utilisée : {personalGoal.vma} km/h</p>
                       <p>Intensité : {personalGoal.percent}% VMA</p>
                       <p>Allure cible : {formatPace(personalGoal.pace)}</p>
-                      <p>Temps cible : {formatDuration(personalGoal.timeSeconds)} par fraction</p>
+                      <p>
+                        Temps cible : {formatDuration(personalGoal.timeSeconds)} par
+                        fraction
+                      </p>
                     </>
                   )}
+
                   {personalGoal.type === "fc" && (
                     <>
                       <p>FC max utilisée : {personalGoal.fcMax} bpm</p>
@@ -1245,34 +1234,67 @@ export default function CalendarApp() {
                       <p>Fréquence cible : {personalGoal.targetFc} bpm</p>
                     </>
                   )}
-                  {(personalGoal.type === "seuil" || personalGoal.type === "10km") && (
+
+                  {(personalGoal.type === "seuil" ||
+                    personalGoal.type === "10km") && (
                     <>
-                      {personalGoal.distance && <p>Distance : {personalGoal.distance} m</p>}
-                      <p>Terrain : {personalGoal.surface === "trail" ? "Trail / côte" : "Route"}</p>
+                      {personalGoal.distance && (
+                        <p>Distance : {personalGoal.distance} m</p>
+                      )}
+                      <p>
+                        Terrain :{" "}
+                        {personalGoal.surface === "trail"
+                          ? "Trail / côte"
+                          : "Route"}
+                      </p>
                       <p>VMA utilisée : {personalGoal.vma} km/h</p>
                       <p>Intensité : {personalGoal.percent}% VMA</p>
                       <p>Allure cible : {formatPace(personalGoal.pace)}</p>
-                      {personalGoal.timeSeconds && <p>Temps cible : {formatDuration(personalGoal.timeSeconds)}</p>}
+                      {personalGoal.timeSeconds && (
+                        <p>
+                          Temps cible :{" "}
+                          {formatDuration(personalGoal.timeSeconds)}
+                        </p>
+                      )}
                     </>
                   )}
-                  {personalGoal.type === "allure" && <p>Allure cible : {formatPace(personalGoal.pace)}</p>}
+
+                  {personalGoal.type === "allure" && (
+                    <p>Allure cible : {formatPace(personalGoal.pace)}</p>
+                  )}
                 </div>
               )}
 
               <div className="floating-admin-menu">
                 {showAdminActions && (
                   <div className="floating-admin-actions">
-                   
-                    {isAdmin && <button onClick={handleDuplicateSession} title="Dupliquer">📋</button>}
+                    {isAdmin && (
+                      <button onClick={handleDuplicateSession} title="Dupliquer">
+                        📋
+                      </button>
+                    )}
+
                     {canEditSelectedSession && (
                       <>
-                        <button onClick={openEditForm} title="Modifier">✏️</button>
-                        <button onClick={handleDeleteSession} title="Supprimer">🗑️</button>
+                        <button onClick={openEditForm} title="Modifier">
+                          ✏️
+                        </button>
+                        <button onClick={handleDeleteSession} title="Supprimer">
+                          🗑️
+                        </button>
                       </>
                     )}
                   </div>
                 )}
-                <button className={`floating-admin-main ${showAdminActions ? "open" : ""}`} onClick={() => setShowAdminActions((current) => !current)}>{showAdminActions ? "×" : "‹"}</button>
+
+                <button
+                  className={`floating-admin-main ${
+                    showAdminActions ? "open" : ""
+                  }`}
+                  onClick={() => setShowAdminActions((current) => !current)}
+                >
+                  {showAdminActions ? "×" : "‹"}
+                </button>
               </div>
             </div>
           </div>
@@ -1282,13 +1304,19 @@ export default function CalendarApp() {
           <div className="participant-modal">
             <div className="participant-modal-card">
               <div className="participant-list-header">
-                <h3>{showParticipantList === "present" ? "Participants" : "Intéressés"}</h3>
+                <h3>
+                  {showParticipantList === "present"
+                    ? "Participants"
+                    : "Intéressés"}
+                </h3>
                 <button onClick={() => setShowParticipantList(null)}>×</button>
               </div>
 
               {displayedParticipantList.length > 0 ? (
                 displayedParticipantList.map((participant) => (
-                  <div key={participant.id} className="participant-row">{participant.firstname} {participant.lastname}</div>
+                  <div key={participant.id} className="participant-row">
+                    {participant.firstname} {participant.lastname}
+                  </div>
                 ))
               ) : (
                 <p className="empty-message">Aucun adhérent</p>
@@ -1300,7 +1328,15 @@ export default function CalendarApp() {
         {showGpxMap && (
           <div className="gpx-map-modal">
             <div className="gpx-map-header">
-              <button onClick={() => { setShowGpxMap(false); setMapLoaded(false); setGpxStats(null); }}>←</button>
+              <button
+                onClick={() => {
+                  setShowGpxMap(false);
+                  setMapLoaded(false);
+                  setGpxStats(null);
+                }}
+              >
+                ←
+              </button>
               <h2>Parcours</h2>
             </div>
 
@@ -1308,12 +1344,20 @@ export default function CalendarApp() {
 
             {gpxStats && (
               <div className="gpx-stats-panel">
-                <div><strong>{gpxStats.distance} km</strong><span>Distance</span></div>
-                <div><strong>+{gpxStats.elevationGain} m</strong><span>Dénivelé +</span></div>
+                <div>
+                  <strong>{gpxStats.distance} km</strong>
+                  <span>Distance</span>
+                </div>
+                <div>
+                  <strong>+{gpxStats.elevationGain} m</strong>
+                  <span>Dénivelé +</span>
+                </div>
               </div>
             )}
 
-            {!mapLoaded && <p className="map-loading">Chargement du parcours...</p>}
+            {!mapLoaded && (
+              <p className="map-loading">Chargement du parcours...</p>
+            )}
           </div>
         )}
       </div>
