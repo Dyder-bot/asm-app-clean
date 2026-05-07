@@ -422,6 +422,7 @@ export default function CalendarApp() {
         sexe: profileSexe,
         vma: profileVma ? Number(profileVma) : null,
         fc_max: profileFcMax ? Number(profileFcMax) : null,
+        fc_rest: profileFcRest ? Number(profileFcRest) : null,
       })
       .eq("id", user.id);
 
@@ -901,7 +902,7 @@ export default function CalendarApp() {
 
         <nav className="side-nav">
           <button className={activeTab === "calendar" ? "active" : ""} onClick={() => { setActiveTab("calendar"); setShowMenu(false); }}>📅 Calendrier</button>
-          <button className={activeTab === "mySessions" ? "active" : ""} onClick={() => { setActiveTab("mySessions"); setShowMenu(false); }}>👤 Mes séances</button>
+          <button className={activeTab === "mySessions" ? "active" : ""} onClick={() => { setActiveTab("mySessions"); setShowMenu(false); }}>👤 Mes performances</button>
           <button className={activeTab === "profile" ? "active" : ""} onClick={() => { setActiveTab("profile"); setShowMenu(false); }}>⚙️ Profil</button>
           <button className={activeTab === "notifications" ? "active" : ""} onClick={() => { setActiveTab("notifications"); setShowMenu(false); }}>🔔 Notifications</button>
           <button onClick={handleLogout}>↪ Déconnexion</button>
@@ -920,7 +921,7 @@ export default function CalendarApp() {
           <button onClick={() => setCurrentDate(new Date(year, month - 1))}>◀</button>
           <div>
             <h1>{currentDate.toLocaleString("fr-FR", { month: "long" })} {year}</h1>
-            <p>{activeTab === "calendar" ? "ASM Pau" : activeTab === "mySessions" ? "Mes séances" : activeTab === "profile" ? "Profil" : "Notifications"}</p>
+            <p>{activeTab === "calendar" ? "ASM Pau" : activeTab === "mySessions" ? "Mes performances" : activeTab === "profile" ? "Profil" : "Notifications"}</p>
           </div>
           <button onClick={() => setCurrentDate(new Date(year, month + 1))}>▶</button>
         </header>
@@ -974,7 +975,7 @@ export default function CalendarApp() {
 
         {activeTab === "mySessions" && (
           <section className="panel-screen">
-            <h2>Mes séances</h2>
+            <h2>Mes performances</h2>
             <p className="screen-intro">Toutes les séances auxquelles tu es inscrit ou intéressé.</p>
             {mySessions.length > 0
               ? mySessions.map((session) => renderSessionCard(session, true))
