@@ -1211,8 +1211,7 @@ export default function CalendarApp() {
               <div className="floating-admin-menu">
                 {showAdminActions && (
                   <div className="floating-admin-actions">
-                    <button onClick={() => handleParticipation("interested")} title="Intéressé">☆</button>
-                    <button onClick={() => handleParticipation("present")} title="Présent">✓</button>
+                   
                     {isAdmin && <button onClick={handleDuplicateSession} title="Dupliquer">📋</button>}
                     {canEditSelectedSession && (
                       <>
