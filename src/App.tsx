@@ -110,13 +110,20 @@ function formatPace(paceMinKm: number) {
   return `${minutes}'${pad(seconds)}/km`;
 }
 
-function formatDuration(seconds: number) {
-  if (!Number.isFinite(seconds) || seconds <= 0) return "-";
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = Math.round(seconds % 60);
-  return `${minutes}'${pad(remainingSeconds)}`;
-}
+const formatDuration = (seconds: number) => {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.round(seconds % 60);
 
+  const paddedMinutes = minutes.toString().padStart(2, "0");
+  const paddedSeconds = secs.toString().padStart(2, "0");
+
+  if (hours > 0) {
+    return `${hours}h${paddedMinutes}'${paddedSeconds}`;
+  }
+
+  return `${minutes}'${paddedSeconds}`;
+};
 function distanceBetween(a: { lat: number; lon: number }, b: { lat: number; lon: number }) {
   const earthRadiusKm = 6371;
   const dLat = ((b.lat - a.lat) * Math.PI) / 180;
