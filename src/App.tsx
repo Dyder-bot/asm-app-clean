@@ -393,7 +393,7 @@ export default function CalendarApp() {
 
     const { data, error } = await supabase
       .from("profiles")
-      .select("firstname, lastname, pseudo, sexe, vma, fc_max, is_admin")
+      .select("firstname, lastname, pseudo, sexe, vma, fc_max, fc_rest, is_admin")
       .eq("id", user.id)
       .single();
 
@@ -404,6 +404,7 @@ export default function CalendarApp() {
     setProfileSexe(data?.sexe || "");
     setProfileVma(data?.vma ? String(data.vma) : "");
     setProfileFcMax(data?.fc_max ? String(data.fc_max) : "");
+    setProfileFcRest(data?.fc_rest ? String(data.fc_rest) : "");
     setIsAdmin(data?.is_admin === true);
   }
 
