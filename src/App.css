@@ -931,4 +931,11 @@ input:disabled {
   padding: 10px;
   font-size: 14px;
 }
+  .auth-logo {
+  width: 90px;
+  height: 90px;
+  object-fit: contain;
+  margin-bottom: 18px;
+  filter: drop-shadow(0 0 18px rgba(212, 225, 87, 0.35));
+}
 }
