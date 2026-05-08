@@ -1026,42 +1026,42 @@ export default function CalendarApp() {
       </tr>
     </thead>
 
-    <tbody>
-      <tr>
-        <td>🟢 Endurance</td>
-        <td>65–75%</td>
-        <td>60–70%</td>
-        <td>Sous SV1</td>
-      </tr>
+   <tbody>
+  <tr>
+    <td>🟢 Endurance</td>
+    <td>Très facile, discussion aisée</td>
+    <td>65–75%</td>
+    <td>Sous SV1</td>
+  </tr>
 
-      <tr>
-        <td>🔵 Active</td>
-        <td>75–80%</td>
-        <td>70–78%</td>
-        <td>SV1 bas</td>
-      </tr>
+  <tr>
+    <td>🔵 Endurance active</td>
+    <td>Facile mais soutenu</td>
+    <td>75–80%</td>
+    <td>SV1</td>
+  </tr>
 
-      <tr>
-        <td>🟡 Tempo</td>
-        <td>80–85%</td>
-        <td>78–85%</td>
-        <td>SV1 haut</td>
-      </tr>
+  <tr>
+    <td>🟡 Tempo</td>
+    <td>Soutenu, respiration marquée</td>
+    <td>80–85%</td>
+    <td>Entre SV1 et SV2</td>
+  </tr>
 
-      <tr>
-        <td>🟠 Seuil</td>
-        <td>85–90%</td>
-        <td>85–90%</td>
-        <td>SV2</td>
-      </tr>
+  <tr>
+    <td>🟠 Seuil</td>
+    <td>Difficile mais contrôlé</td>
+    <td>85–90%</td>
+    <td>SV2</td>
+  </tr>
 
-      <tr>
-        <td>🔴 Intense</td>
-        <td>95–105%</td>
-        <td>90–95%</td>
-        <td>Au-dessus SV2</td>
-      </tr>
-    </tbody>
+  <tr>
+    <td>🔴 Anaérobie / VMA</td>
+    <td>Très difficile</td>
+    <td>95–105%</td>
+    <td>Au-dessus SV2</td>
+  </tr>
+</tbody>
   </table>
 
   <p className="zones-note">
