@@ -1013,40 +1013,36 @@ export default function CalendarApp() {
     </table>
   </div>
 
- <div className="performance-card">
+<div className="performance-card">
   <h3>❤️ Zones d’entraînement</h3>
 
   <table className="performance-table zones-table">
     <thead>
       <tr>
         <th>Zone</th>
-        <th>Repère coach</th>
-        <th>% VMA</th>
-        <th>% FC réserve</th>
-        <th>Utilisation</th>
+        <th>%VMA</th>
+        <th>%FC</th>
+        <th>Usage</th>
       </tr>
     </thead>
 
     <tbody>
       <tr>
         <td>🟢 Endurance</td>
-        <td>Sous SV1</td>
         <td>65–75%</td>
         <td>60–70%</td>
-        <td>Footing facile</td>
+        <td>Footing</td>
       </tr>
 
       <tr>
         <td>🔵 Active</td>
-        <td>SV1 bas</td>
         <td>75–80%</td>
         <td>70–78%</td>
-        <td>Sortie soutenue</td>
+        <td>Soutenu</td>
       </tr>
 
       <tr>
         <td>🟡 Tempo</td>
-        <td>SV1 haut</td>
         <td>80–85%</td>
         <td>78–85%</td>
         <td>Allure semi</td>
@@ -1054,26 +1050,24 @@ export default function CalendarApp() {
 
       <tr>
         <td>🟠 Seuil</td>
-        <td>SV2</td>
         <td>85–90%</td>
         <td>85–90%</td>
-        <td>Travail 10 km / côtes</td>
+        <td>10 km / côtes</td>
       </tr>
 
       <tr>
         <td>🔴 Intense</td>
-        <td>Au-dessus SV2</td>
         <td>95–105%</td>
         <td>90–95%</td>
-        <td>Fractionné / VMA</td>
+        <td>VMA</td>
       </tr>
     </tbody>
   </table>
 
   <p className="zones-note">
     <strong>SV1</strong> = effort soutenu mais contrôlé.<br />
-    <strong>SV2</strong> = effort difficile, proche allure 10 km.<br />
-    Les fréquences cardiaques utilisent la logique Karvonen avec la FC de repos.
+    <strong>SV2</strong> = effort difficile proche allure 10 km.<br />
+    FC basée sur la méthode Karvonen.
   </p>
 </div>
 </section>
