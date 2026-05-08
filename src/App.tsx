@@ -1022,7 +1022,7 @@ export default function CalendarApp() {
         <th>Zone</th>
         <th>%VMA</th>
         <th>%FC</th>
-        <th>Usage</th>
+        <th>Repère</th>
       </tr>
     </thead>
 
@@ -1031,35 +1031,35 @@ export default function CalendarApp() {
         <td>🟢 Endurance</td>
         <td>65–75%</td>
         <td>60–70%</td>
-        <td>Footing</td>
+        <td>Sous SV1</td>
       </tr>
 
       <tr>
         <td>🔵 Active</td>
         <td>75–80%</td>
         <td>70–78%</td>
-        <td>Soutenu</td>
+        <td>SV1 bas</td>
       </tr>
 
       <tr>
         <td>🟡 Tempo</td>
         <td>80–85%</td>
         <td>78–85%</td>
-        <td>Allure semi</td>
+        <td>SV1 haut</td>
       </tr>
 
       <tr>
         <td>🟠 Seuil</td>
         <td>85–90%</td>
         <td>85–90%</td>
-        <td>10 km / côtes</td>
+        <td>SV2</td>
       </tr>
 
       <tr>
         <td>🔴 Intense</td>
         <td>95–105%</td>
         <td>90–95%</td>
-        <td>VMA</td>
+        <td>Au-dessus SV2</td>
       </tr>
     </tbody>
   </table>
