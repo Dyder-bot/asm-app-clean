@@ -1030,31 +1030,31 @@ setShowAdminActions(false);
       <tr>
         <td>🟢 Endurance</td>
         <td>60–70%</td>
-        <td>{Math.round((profileFcMax - profileFcRest) * 0.65 + profileFcRest)} bpm</td>
+        <td>{Math.round((Number(profileFcMax) - Number(profileFcRest)) * 0.65 + Number(profileFcRest))} bpm</td>
       </tr>
 
       <tr>
         <td>🔵 Active</td>
         <td>70–78%</td>
-        <td>{Math.round((profileFcMax - profileFcRest) * 0.75 + profileFcRest)} bpm</td>
+         <td>{Math.round((Number(profileFcMax) - Number(profileFcRest)) * 0.75 + Number(profileFcRest))} bpm</td>
       </tr>
 
       <tr>
         <td>🟡 Tempo</td>
         <td>78–85%</td>
-        <td>{Math.round((profileFcMax - profileFcRest) * 0.80 + profileFcRest)} bpm</td>
+        <td>{Math.round((Number(profileFcMax) - Number(profileFcRest)) * 0.80 + Number(profileFcRest))} bpm</td>
       </tr>
 
       <tr>
         <td>🟠 Seuil</td>
         <td>85–90%</td>
-        <td>{Math.round((profileFcMax - profileFcRest) * 0.88 + profileFcRest)} bpm</td>
+         <td>{Math.round((Number(profileFcMax) - Number(profileFcRest)) * 0.88 + Number(profileFcRest))} bpm</td>
       </tr>
 
       <tr>
         <td>🔴 Intense</td>
         <td>90–95%</td>
-        <td>{Math.round((profileFcMax - profileFcRest) * 0.92 + profileFcRest)} bpm</td>
+         <td>{Math.round((Number(profileFcMax) - Number(profileFcRest)) * 0.92 + Number(profileFcRest))} bpm</td>
       </tr>
     </tbody>
   </table>
