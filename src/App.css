@@ -1092,5 +1092,44 @@ input:disabled {
   font-size: 0.92rem;
   line-height: 1.4;
 }
+  .admin-screen {
+  padding-bottom: 100px;
+}
+
+.admin-list {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.admin-card {
+  padding: 16px;
+  border-radius: 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+}
+
+.admin-card strong {
+  color: white;
+  font-size: 17px;
+}
+
+.admin-card p {
+  color: var(--text-muted);
+  margin: 6px 0 14px;
+}
+
+.admin-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.admin-actions .primary-btn,
+.admin-actions .danger-btn {
+  margin: 0;
+  padding: 12px;
+  font-size: 14px;
+}
 }
 }
