@@ -1078,5 +1078,19 @@ input:disabled {
   font-size: 11.5px;
   line-height: 1.35;
 }
+  .zone-info-box {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(200, 255, 80, 0.08);
+  border: 1px solid rgba(200, 255, 80, 0.15);
+}
+
+.zone-info-box p {
+  margin: 6px 0;
+  color: #d7ff4d;
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
 }
 }
