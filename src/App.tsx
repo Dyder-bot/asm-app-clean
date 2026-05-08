@@ -1018,13 +1018,13 @@ export default function CalendarApp() {
 
   <table className="performance-table zones-table">
     <thead>
-      <tr>
-        <th>Zone</th>
-        <th>%VMA</th>
-        <th>%FC</th>
-        <th>Repère</th>
-      </tr>
-    </thead>
+  <tr>
+    <th>Zone</th>
+    <th>Sensation</th>
+    <th>% VMA</th>
+    <th>Repère</th>
+  </tr>
+</thead>
 
    <tbody>
   <tr>
