@@ -563,8 +563,9 @@ export default function CalendarApp() {
     setImageFile(null);
     setGpxFile(null);
     setIsEditing(true);
-    setShowCreateForm(true);
-    setShowAdminActions(false);
+setShowCreateForm(true);
+setSelectedSession(null);
+setShowAdminActions(false);
   }
 
   async function uploadFile(file: File, bucketName: string) {
