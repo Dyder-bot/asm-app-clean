@@ -1013,43 +1013,69 @@ export default function CalendarApp() {
     </table>
   </div>
 
-  <div className="performance-card">
-    <h3>❤️ Zones cardiaques Karvonen</h3>
+ <div className="performance-card">
+  <h3>❤️ Zones d’entraînement</h3>
 
-    <table className="performance-table">
-      <thead>
-        <tr>
-          <th>Zone</th>
-          <th>% réserve</th>
-          <th>FC cible</th>
-        </tr>
-      </thead>
-      <tbody>
-        {[
-          ["Endurance", 60],
-          ["SV1", 75],
-          ["Tempo", 80],
-          ["SV2", 88],
-          ["Intense", 92],
-        ].map(([label, percent]) => {
-          const fcMax = Number(profileFcMax);
-          const fcRest = Number(profileFcRest);
-          const fc =
-            fcMax && fcRest
-              ? Math.round(fcRest + (fcMax - fcRest) * (Number(percent) / 100))
-              : null;
+  <table className="performance-table zones-table">
+    <thead>
+      <tr>
+        <th>Zone</th>
+        <th>Repère coach</th>
+        <th>% VMA</th>
+        <th>% FC réserve</th>
+        <th>Utilisation</th>
+      </tr>
+    </thead>
 
-          return (
-            <tr key={label}>
-              <td>{label}</td>
-              <td>{percent}%</td>
-              <td>{fc ? `${fc} bpm` : "-"}</td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
-  </div>
+    <tbody>
+      <tr>
+        <td>🟢 Endurance</td>
+        <td>Sous SV1</td>
+        <td>65–75%</td>
+        <td>60–70%</td>
+        <td>Footing facile</td>
+      </tr>
+
+      <tr>
+        <td>🔵 Active</td>
+        <td>SV1 bas</td>
+        <td>75–80%</td>
+        <td>70–78%</td>
+        <td>Sortie soutenue</td>
+      </tr>
+
+      <tr>
+        <td>🟡 Tempo</td>
+        <td>SV1 haut</td>
+        <td>80–85%</td>
+        <td>78–85%</td>
+        <td>Allure semi</td>
+      </tr>
+
+      <tr>
+        <td>🟠 Seuil</td>
+        <td>SV2</td>
+        <td>85–90%</td>
+        <td>85–90%</td>
+        <td>Travail 10 km / côtes</td>
+      </tr>
+
+      <tr>
+        <td>🔴 Intense</td>
+        <td>Au-dessus SV2</td>
+        <td>95–105%</td>
+        <td>90–95%</td>
+        <td>Fractionné / VMA</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p className="zones-note">
+    <strong>SV1</strong> = effort soutenu mais contrôlé.<br />
+    <strong>SV2</strong> = effort difficile, proche allure 10 km.<br />
+    Les fréquences cardiaques utilisent la logique Karvonen avec la FC de repos.
+  </p>
+</div>
 </section>
         )}
 
