@@ -1015,61 +1015,54 @@ setShowAdminActions(false);
   </div>
 
 <div className="performance-card">
-  <h3>❤️ Zones d’entraînement</h3>
+  <h3>❤️ Zones cardiaques Karvonen</h3>
 
-  <table className="performance-table zones-table">
+  <table className="performance-table compact-table">
     <thead>
-  <tr>
-    <th>Zone</th>
-    <th>Sensation</th>
-    <th>% VMA</th>
-    <th>Repère</th>
-  </tr>
-</thead>
+      <tr>
+        <th>Zone</th>
+        <th>% réserve</th>
+        <th>FC cible</th>
+      </tr>
+    </thead>
 
-   <tbody>
-  <tr>
-    <td>🟢 Endurance</td>
-    <td>Très facile, discussion aisée</td>
-    <td>65–75%</td>
-    <td>Sous SV1</td>
-  </tr>
+    <tbody>
+      <tr>
+        <td>🟢 Endurance</td>
+        <td>60–70%</td>
+        <td>{Math.round((profileFcMax - profileFcRest) * 0.65 + profileFcRest)} bpm</td>
+      </tr>
 
-  <tr>
-    <td>🔵 Endurance active</td>
-    <td>Facile mais soutenu</td>
-    <td>75–80%</td>
-    <td>SV1</td>
-  </tr>
+      <tr>
+        <td>🔵 Active</td>
+        <td>70–78%</td>
+        <td>{Math.round((profileFcMax - profileFcRest) * 0.75 + profileFcRest)} bpm</td>
+      </tr>
 
-  <tr>
-    <td>🟡 Tempo</td>
-    <td>Soutenu, respiration marquée</td>
-    <td>80–85%</td>
-    <td>Entre SV1 et SV2</td>
-  </tr>
+      <tr>
+        <td>🟡 Tempo</td>
+        <td>78–85%</td>
+        <td>{Math.round((profileFcMax - profileFcRest) * 0.80 + profileFcRest)} bpm</td>
+      </tr>
 
-  <tr>
-    <td>🟠 Seuil</td>
-    <td>Difficile mais contrôlé</td>
-    <td>85–90%</td>
-    <td>SV2</td>
-  </tr>
+      <tr>
+        <td>🟠 Seuil</td>
+        <td>85–90%</td>
+        <td>{Math.round((profileFcMax - profileFcRest) * 0.88 + profileFcRest)} bpm</td>
+      </tr>
 
-  <tr>
-    <td>🔴 Anaérobie / VMA</td>
-    <td>Très difficile</td>
-    <td>95–105%</td>
-    <td>Au-dessus SV2</td>
-  </tr>
-</tbody>
+      <tr>
+        <td>🔴 Intense</td>
+        <td>90–95%</td>
+        <td>{Math.round((profileFcMax - profileFcRest) * 0.92 + profileFcRest)} bpm</td>
+      </tr>
+    </tbody>
   </table>
 
-  <p className="zones-note">
-    <strong>SV1</strong> = effort soutenu mais contrôlé.<br />
-    <strong>SV2</strong> = effort difficile proche allure 10 km.<br />
-    FC basée sur la méthode Karvonen.
-  </p>
+  <div className="zone-info-box">
+    <p><strong>SV1</strong> ≈ 75–80% VMA • 70–78% FC réserve</p>
+    <p><strong>SV2 / seuil</strong> ≈ 85–90% VMA • 85–90% FC réserve</p>
+  </div>
 </div>
 </section>
         )}
@@ -1173,17 +1166,6 @@ setShowAdminActions(false);
                 <label>Type</label>
                 <select value={formType} onChange={(e) => setFormType(e.target.value)}>
                   {SESSION_TYPES.map((type) => <option key={type}>{type}</option>)}
-                </select>
-              </div>
-
-              <div className="form-row">
-                <label>Objectif structuré</label>
-                <select value={formWorkoutMode} onChange={(e) => setFormWorkoutMode(e.target.value as WorkoutMode)}>
-                  <option value="">Automatique depuis la description</option>
-                  <option value="vma">Fractionné VMA</option>
-                  <option value="fc">Pourcentage FC max</option>
-                  <option value="seuil">Seuil</option>
-                  <option value="10km">Allure 10 km</option>
                 </select>
               </div>
 
