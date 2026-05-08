@@ -340,6 +340,11 @@ export default function CalendarApp() {
   const canEditSelectedSession = isAdmin || selectedSession?.created_by === user?.id;
   const displayName = firstname || lastname ? `${firstname} ${lastname}`.trim() : user?.email || "Adhérent";
 
+  const [isApproved, setIsApproved] = useState(false);
+const [isActive, setIsActive] = useState(true);
+const [pendingProfiles, setPendingProfiles] = useState<any[]>([]);
+const [activeTab, setActiveTab] = useState<"calendar" | "profile" | "performances" | "admin">("calendar");
+
   const sessionsByDate = useMemo(() => {
     return sessions.reduce((acc, session) => {
       acc[session.date] = true;
