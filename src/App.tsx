@@ -61,6 +61,7 @@ type PendingProfile = {
   email?: string | null;
   approved?: boolean | null;
   active?: boolean | null;
+  is_admin?: boolean | null;
 };
 
 type PersonalGoal =
@@ -302,6 +303,7 @@ export default function CalendarApp() {
   const [isApproved, setIsApproved] = useState(false);
   const [isActive, setIsActive] = useState(true);
   const [pendingProfiles, setPendingProfiles] = useState<PendingProfile[]>([]);
+  const [approvedProfiles, setApprovedProfiles] = useState<PendingProfile[]>([]);
   const [approvingProfileId, setApprovingProfileId] = useState<string | null>(null);
   const [approvingAdminProfileId, setApprovingAdminProfileId] = useState<string | null>(null);
 
@@ -429,6 +431,7 @@ export default function CalendarApp() {
 
     if (data?.is_admin === true) {
       fetchPendingProfiles();
+      fetchApprovedProfiles();
     }
 
     setProfileLoaded(true);
@@ -448,6 +451,22 @@ export default function CalendarApp() {
     }
 
     setPendingProfiles((data || []) as PendingProfile[]);
+  }
+
+  async function fetchApprovedProfiles() {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, firstname, lastname, pseudo, email, approved, active, is_admin")
+      .eq("approved", true)
+      .eq("active", true)
+      .order("firstname", { ascending: true });
+
+    if (error) {
+      alert("Erreur chargement membres admis : " + error.message);
+      return;
+    }
+
+    setApprovedProfiles((data || []) as PendingProfile[]);
   }
 
   async function approveProfile(profileId: string) {
@@ -473,6 +492,7 @@ export default function CalendarApp() {
     }
 
     await fetchPendingProfiles();
+    await fetchApprovedProfiles();
     setApprovingProfileId(null);
   }
 
@@ -499,13 +519,14 @@ export default function CalendarApp() {
     }
 
     await fetchPendingProfiles();
+    await fetchApprovedProfiles();
     setApprovingAdminProfileId(null);
   }
 
   async function deactivateProfile(profileId: string) {
     if (!isAdmin) return;
 
-    const confirmDelete = window.confirm("Supprimer / désactiver cette demande ?");
+    const confirmDelete = window.confirm("Retirer l’accès à cette personne ?");
     if (!confirmDelete) return;
 
     const { error } = await supabase
@@ -522,6 +543,7 @@ export default function CalendarApp() {
     }
 
     fetchPendingProfiles();
+    fetchApprovedProfiles();
   }
 
   async function saveMyProfile() {
@@ -1277,8 +1299,9 @@ export default function CalendarApp() {
                           approvingProfileId === profile.id ? "selected" : ""
                         }`}
                         onClick={() => approveProfile(profile.id)}
+                        disabled={approvingProfileId === profile.id || approvingAdminProfileId === profile.id}
                       >
-                        Approuver
+                        {approvingProfileId === profile.id ? "Approuvé" : "Approuver"}
                       </button>
 
                       <button
@@ -1286,8 +1309,9 @@ export default function CalendarApp() {
                           approvingAdminProfileId === profile.id ? "selected" : ""
                         }`}
                         onClick={() => approveAdminProfile(profile.id)}
+                        disabled={approvingProfileId === profile.id || approvingAdminProfileId === profile.id}
                       >
-                        Nommer admin
+                        {approvingAdminProfileId === profile.id ? "Admin nommé" : "Nommer admin"}
                       </button>
 
                       <button
@@ -1295,6 +1319,37 @@ export default function CalendarApp() {
                         onClick={() => deactivateProfile(profile.id)}
                       >
                         Supprimer
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <h2 className="admin-section-title">Membres admis</h2>
+
+            {approvedProfiles.length === 0 ? (
+              <p className="empty-message">Aucun membre admis pour le moment</p>
+            ) : (
+              <div className="admin-list">
+                {approvedProfiles.map((profile) => (
+                  <div key={profile.id} className="admin-card">
+                    <div>
+                      <strong>
+                        {profile.firstname} {profile.lastname}
+                      </strong>
+                      <p>
+                        {profile.email || profile.pseudo || "Adhérent validé"}
+                        {profile.is_admin ? " • Admin" : ""}
+                      </p>
+                    </div>
+
+                    <div className="admin-actions">
+                      <button
+                        className="danger-btn"
+                        onClick={() => deactivateProfile(profile.id)}
+                      >
+                        Retirer l’accès
                       </button>
                     </div>
                   </div>
@@ -1455,7 +1510,7 @@ export default function CalendarApp() {
               <div className="detail-box">
                 <p>🏷️ {selectedSession.type || "Type non renseigné"}</p>
                 <p>📍 {selectedSession.location || "Lieu non renseigné"}</p>
-                <p>{selectedSession.description || "Aucune description"}</p>
+                <p className="session-description">{selectedSession.description || "Aucune description"}</p>
 
                 {selectedSession.gpx_url && (
                   <div className="gpx-actions">
