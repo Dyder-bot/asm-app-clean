@@ -23,7 +23,7 @@ const SESSION_TYPES = [
 
 const WEEK_DAYS = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
 
-type AppTab = "calendar" | "mySessions" | "profile" | "notifications";
+type AppTab = "calendar" | "mySessions" | "profile" | "notifications" | "admin";
 type ParticipationStatus = "present" | "interested";
 type WorkoutMode = "" | "vma" | "fc" | "seuil" | "10km" | "allure";
 
@@ -51,6 +51,16 @@ type Participant = {
   status: ParticipationStatus;
   firstname?: string;
   lastname?: string;
+};
+
+type PendingProfile = {
+  id: string;
+  firstname?: string | null;
+  lastname?: string | null;
+  pseudo?: string | null;
+  email?: string | null;
+  approved?: boolean | null;
+  active?: boolean | null;
 };
 
 type PersonalGoal =
@@ -111,6 +121,8 @@ function formatPace(paceMinKm: number) {
 }
 
 const formatDuration = (seconds: number) => {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "-";
+
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const secs = Math.round(seconds % 60);
@@ -124,6 +136,7 @@ const formatDuration = (seconds: number) => {
 
   return `${minutes}'${paddedSeconds}`;
 };
+
 function distanceBetween(a: { lat: number; lon: number }, b: { lat: number; lon: number }) {
   const earthRadiusKm = 6371;
   const dLat = ((b.lat - a.lat) * Math.PI) / 180;
@@ -284,7 +297,11 @@ export default function CalendarApp() {
   const [showAdminActions, setShowAdminActions] = useState(false);
 
   const [user, setUser] = useState<any>(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isApproved, setIsApproved] = useState(false);
+  const [isActive, setIsActive] = useState(true);
+  const [pendingProfiles, setPendingProfiles] = useState<PendingProfile[]>([]);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -299,7 +316,7 @@ export default function CalendarApp() {
   const [raceTime, setRaceTime] = useState("");
 
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [sessions, setSessions] = useState<any[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
 
@@ -340,11 +357,6 @@ export default function CalendarApp() {
   const canEditSelectedSession = isAdmin || selectedSession?.created_by === user?.id;
   const displayName = firstname || lastname ? `${firstname} ${lastname}`.trim() : user?.email || "Adhérent";
 
-  const [isApproved, setIsApproved] = useState(false);
-const [isActive, setIsActive] = useState(true);
-const [pendingProfiles, setPendingProfiles] = useState<any[]>([]);
-const [activeTab, setActiveTab] = useState<"calendar" | "profile" | "performances" | "admin">("calendar");
-
   const sessionsByDate = useMemo(() => {
     return sessions.reduce((acc, session) => {
       acc[session.date] = true;
@@ -365,7 +377,10 @@ const [activeTab, setActiveTab] = useState<"calendar" | "profile" | "performance
     : null;
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUser(data.user));
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user);
+      if (!data.user) setProfileLoaded(true);
+    });
   }, []);
 
   useEffect(() => {
@@ -387,13 +402,18 @@ const [activeTab, setActiveTab] = useState<"calendar" | "profile" | "performance
   async function fetchMyProfile() {
     if (!user) return;
 
+    setProfileLoaded(false);
+
     const { data, error } = await supabase
       .from("profiles")
-      .select("firstname, lastname, pseudo, sexe, vma, fc_max, fc_rest, is_admin")
+      .select("firstname, lastname, pseudo, sexe, vma, fc_max, fc_rest, is_admin, approved, active")
       .eq("id", user.id)
       .single();
 
-    if (error) return;
+    if (error) {
+      setProfileLoaded(true);
+      return;
+    }
 
     setFirstname(data?.firstname || "");
     setLastname(data?.lastname || "");
@@ -402,6 +422,73 @@ const [activeTab, setActiveTab] = useState<"calendar" | "profile" | "performance
     setProfileFcMax(data?.fc_max ? String(data.fc_max) : "");
     setProfileFcRest(data?.fc_rest ? String(data.fc_rest) : "");
     setIsAdmin(data?.is_admin === true);
+    setIsApproved(data?.approved === true);
+    setIsActive(data?.active !== false);
+
+    if (data?.is_admin === true) {
+      fetchPendingProfiles();
+    }
+
+    setProfileLoaded(true);
+  }
+
+  async function fetchPendingProfiles() {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, firstname, lastname, pseudo, email, approved, active")
+      .eq("approved", false)
+      .eq("active", true)
+      .order("firstname", { ascending: true });
+
+    if (error) {
+      alert("Erreur chargement demandes : " + error.message);
+      return;
+    }
+
+    setPendingProfiles((data || []) as PendingProfile[]);
+  }
+
+  async function approveProfile(profileId: string) {
+    if (!user || !isAdmin) return;
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        approved: true,
+        approved_at: new Date().toISOString(),
+        approved_by: user.id,
+        active: true,
+      })
+      .eq("id", profileId);
+
+    if (error) {
+      alert("Erreur validation : " + error.message);
+      return;
+    }
+
+    fetchPendingProfiles();
+  }
+
+  async function deactivateProfile(profileId: string) {
+    if (!isAdmin) return;
+
+    const confirmDelete = window.confirm("Supprimer / désactiver cette demande ?");
+    if (!confirmDelete) return;
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        active: false,
+        approved: false,
+      })
+      .eq("id", profileId);
+
+    if (error) {
+      alert("Erreur suppression : " + error.message);
+      return;
+    }
+
+    fetchPendingProfiles();
   }
 
   async function saveMyProfile() {
@@ -487,6 +574,7 @@ const [activeTab, setActiveTab] = useState<"calendar" | "profile" | "performance
       return;
     }
 
+    setProfileLoaded(false);
     setUser(data.user);
   }
 
@@ -513,9 +601,15 @@ const [activeTab, setActiveTab] = useState<"calendar" | "profile" | "performance
       firstname,
       lastname,
       pseudo,
+      email,
       is_admin: false,
+      approved: false,
+      active: true,
     });
 
+    setIsApproved(false);
+    setIsActive(true);
+    setProfileLoaded(true);
     setUser(newUser);
   }
 
@@ -524,6 +618,9 @@ const [activeTab, setActiveTab] = useState<"calendar" | "profile" | "performance
     setUser(null);
     setSelectedSession(null);
     setShowMenu(false);
+    setIsApproved(false);
+    setIsActive(true);
+    setProfileLoaded(true);
   }
 
   function resetForm() {
@@ -568,9 +665,8 @@ const [activeTab, setActiveTab] = useState<"calendar" | "profile" | "performance
     setImageFile(null);
     setGpxFile(null);
     setIsEditing(true);
-setShowCreateForm(true);
-setSelectedSession(null);
-setShowAdminActions(false);
+    setShowCreateForm(true);
+    setShowAdminActions(false);
   }
 
   async function uploadFile(file: File, bucketName: string) {
@@ -832,7 +928,14 @@ setShowAdminActions(false);
 
   function renderSessionCard(session: Session & { participationStatus?: ParticipationStatus }, compact = false) {
     return (
-      <button key={session.id} onClick={() => { setSelectedSession(session); setActiveTab("calendar"); }} className={`session-card ${compact ? "compact" : ""}`}>
+      <button
+        key={session.id}
+        onClick={() => {
+          setSelectedSession(session);
+          setActiveTab("calendar");
+        }}
+        className={`session-card ${compact ? "compact" : ""}`}
+      >
         {session.image_url && <img className="session-thumb" src={session.image_url} alt="" />}
         <div className="session-card-content">
           <strong>{session.title}</strong>
@@ -848,16 +951,26 @@ setShowAdminActions(false);
     );
   }
 
+  if (!profileLoaded) {
+    return (
+      <div className="app-screen auth-screen">
+        <div className="auth-card">
+          <img src="/logo-asm.png" alt="ASM Pau" className="auth-logo" />
+          <h1>ASM Pau</h1>
+          <p>Chargement...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!user) {
     return (
-  <div className="app-screen auth-screen">
-    <div className="auth-card">
+      <div className="app-screen auth-screen">
+        <div className="auth-card">
+          <img src="/logo-asm.png" alt="ASM Pau" className="auth-logo" />
+          <h1>ASM Pau</h1>
+          <p>Course à pied</p>
 
-      <img src="/logo-asm.png" alt="ASM Pau" className="auth-logo" />
-
-      <h1>ASM Pau</h1>
-      <p>Course à pied</p>
-      
           <input placeholder="Prénom" value={firstname} onChange={(e) => setFirstname(e.target.value)} />
           <input placeholder="Nom" value={lastname} onChange={(e) => setLastname(e.target.value)} />
           <input placeholder="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -865,6 +978,26 @@ setShowAdminActions(false);
 
           <button className="primary-btn" onClick={handleLogin}>Connexion</button>
           <button className="secondary-btn" onClick={handleSignup}>Créer un compte</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (user && (!isApproved || !isActive) && !isAdmin) {
+    return (
+      <div className="app-screen auth-screen">
+        <div className="auth-card">
+          <img src="/logo-asm.png" alt="ASM Pau" className="auth-logo" />
+          <h1>Compte en attente</h1>
+          <p>
+            Ton inscription a bien été enregistrée.
+            <br />
+            Un administrateur du club doit maintenant valider ton accès.
+          </p>
+
+          <button className="secondary-btn" onClick={handleLogout}>
+            Se déconnecter
+          </button>
         </div>
       </div>
     );
@@ -888,6 +1021,20 @@ setShowAdminActions(false);
           <button className={activeTab === "mySessions" ? "active" : ""} onClick={() => { setActiveTab("mySessions"); setShowMenu(false); }}>👤 Mes performances</button>
           <button className={activeTab === "profile" ? "active" : ""} onClick={() => { setActiveTab("profile"); setShowMenu(false); }}>⚙️ Profil</button>
           <button className={activeTab === "notifications" ? "active" : ""} onClick={() => { setActiveTab("notifications"); setShowMenu(false); }}>🔔 Notifications</button>
+
+          {isAdmin && (
+            <button
+              className={activeTab === "admin" ? "active" : ""}
+              onClick={() => {
+                setActiveTab("admin");
+                setShowMenu(false);
+                fetchPendingProfiles();
+              }}
+            >
+              ✅ Demandes d’accès{pendingProfiles.length > 0 ? ` (${pendingProfiles.length})` : ""}
+            </button>
+          )}
+
           <button onClick={handleLogout}>↪ Déconnexion</button>
         </nav>
 
@@ -904,7 +1051,17 @@ setShowAdminActions(false);
           <button onClick={() => setCurrentDate(new Date(year, month - 1))}>◀</button>
           <div>
             <h1>{currentDate.toLocaleString("fr-FR", { month: "long" })} {year}</h1>
-            <p>{activeTab === "calendar" ? "ASM Pau" : activeTab === "mySessions" ? "Mes performances" : activeTab === "profile" ? "Profil" : "Notifications"}</p>
+            <p>
+              {activeTab === "calendar"
+                ? "ASM Pau"
+                : activeTab === "mySessions"
+                ? "Mes performances"
+                : activeTab === "profile"
+                ? "Profil"
+                : activeTab === "admin"
+                ? "Demandes d’accès"
+                : "Notifications"}
+            </p>
           </div>
           <button onClick={() => setCurrentDate(new Date(year, month + 1))}>▶</button>
         </header>
@@ -957,119 +1114,150 @@ setShowAdminActions(false);
         )}
 
         {activeTab === "mySessions" && (
-         <section className="performance-screen">
-  <h2>Mes performances</h2>
+          <section className="performance-screen">
+            <h2>Mes performances</h2>
 
-  <div className="performance-card">
-    <h3>🏆 Performances théoriques</h3>
-    <p>Estimations basées sur ta VMA.</p>
+            <div className="performance-card">
+              <h3>🏆 Performances théoriques</h3>
+              <p>Estimations basées sur ta VMA.</p>
 
-    <table className="performance-table">
-      <thead>
-        <tr>
-          <th>Distance</th>
-          <th>% VMA</th>
-          <th>Temps</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>10 km</td>
-          <td>90%</td>
-          <td>{profileVma ? formatDuration((10 / (Number(profileVma) * 0.9)) * 3600) : "-"}</td>
-        </tr>
-        <tr>
-          <td>Semi</td>
-          <td>85%</td>
-          <td>{profileVma ? formatDuration((21.1 / (Number(profileVma) * 0.85)) * 3600) : "-"}</td>
-        </tr>
-        <tr>
-          <td>Marathon</td>
-          <td>80%</td>
-          <td>{profileVma ? formatDuration((42.195 / (Number(profileVma) * 0.8)) * 3600) : "-"}</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
+              <table className="performance-table">
+                <thead>
+                  <tr>
+                    <th>Distance</th>
+                    <th>% VMA</th>
+                    <th>Temps</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>10 km</td>
+                    <td>90%</td>
+                    <td>{profileVma ? formatDuration((10 / (Number(profileVma) * 0.9)) * 3600) : "-"}</td>
+                  </tr>
+                  <tr>
+                    <td>Semi</td>
+                    <td>85%</td>
+                    <td>{profileVma ? formatDuration((21.1 / (Number(profileVma) * 0.85)) * 3600) : "-"}</td>
+                  </tr>
+                  <tr>
+                    <td>Marathon</td>
+                    <td>80%</td>
+                    <td>{profileVma ? formatDuration((42.195 / (Number(profileVma) * 0.8)) * 3600) : "-"}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
 
-  <div className="performance-card">
-    <h3>⚡ Zones d’allure</h3>
+            <div className="performance-card">
+              <h3>⚡ Zones d’allure</h3>
 
-    <table className="performance-table">
-      <thead>
-        <tr>
-          <th>Zone</th>
-          <th>% VMA</th>
-          <th>Allure</th>
-        </tr>
-      </thead>
-      <tbody>
-        {[70, 75, 80, 85, 90, 95, 100, 105, 110].map((percent) => (
-          <tr key={percent}>
-            <td>{percent}%</td>
-            <td>{percent}%</td>
-            <td>
-              {profileVma
-                ? formatPace(60 / (Number(profileVma) * (percent / 100)))
-                : "-"}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
+              <table className="performance-table">
+                <thead>
+                  <tr>
+                    <th>Zone</th>
+                    <th>% VMA</th>
+                    <th>Allure</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[70, 75, 80, 85, 90, 95, 100, 105, 110].map((percent) => (
+                    <tr key={percent}>
+                      <td>{percent}%</td>
+                      <td>{percent}%</td>
+                      <td>
+                        {profileVma
+                          ? formatPace(60 / (Number(profileVma) * (percent / 100)))
+                          : "-"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
-<div className="performance-card">
-  <h3>❤️ Zones cardiaques Karvonen</h3>
+            <div className="performance-card">
+              <h3>❤️ Zones cardiaques Karvonen</h3>
 
-  <table className="performance-table compact-table">
-    <thead>
-      <tr>
-        <th>Zone</th>
-        <th>% réserve</th>
-        <th>FC cible</th>
-      </tr>
-    </thead>
+              <table className="performance-table compact-table">
+                <thead>
+                  <tr>
+                    <th>Zone</th>
+                    <th>% réserve</th>
+                    <th>FC cible</th>
+                  </tr>
+                </thead>
 
-    <tbody>
-      <tr>
-        <td>🟢 Endurance</td>
-        <td>60–70%</td>
-        <td>{Math.round((Number(profileFcMax) - Number(profileFcRest)) * 0.65 + Number(profileFcRest))} bpm</td>
-      </tr>
+                <tbody>
+                  {[
+                    ["🟢 Endurance", "60–70%", 0.65],
+                    ["🔵 Active", "70–78%", 0.75],
+                    ["🟡 Tempo", "78–85%", 0.8],
+                    ["🟠 Seuil", "85–90%", 0.88],
+                    ["🔴 Intense", "90–95%", 0.92],
+                  ].map(([label, percentText, percent]) => {
+                    const fcMax = Number(profileFcMax);
+                    const fcRest = Number(profileFcRest);
+                    const fc = fcMax && fcRest
+                      ? Math.round((fcMax - fcRest) * Number(percent) + fcRest)
+                      : null;
 
-      <tr>
-        <td>🔵 Active</td>
-        <td>70–78%</td>
-         <td>{Math.round((Number(profileFcMax) - Number(profileFcRest)) * 0.75 + Number(profileFcRest))} bpm</td>
-      </tr>
+                    return (
+                      <tr key={String(label)}>
+                        <td>{label}</td>
+                        <td>{percentText}</td>
+                        <td>{fc ? `${fc} bpm` : "-"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
 
-      <tr>
-        <td>🟡 Tempo</td>
-        <td>78–85%</td>
-        <td>{Math.round((Number(profileFcMax) - Number(profileFcRest)) * 0.80 + Number(profileFcRest))} bpm</td>
-      </tr>
+              <div className="zone-info-box">
+                <p><strong>SV1</strong> ≈ 75–80% VMA • 70–78% FC réserve</p>
+                <p><strong>SV2 / seuil</strong> ≈ 85–90% VMA • 85–90% FC réserve</p>
+              </div>
+            </div>
+          </section>
+        )}
 
-      <tr>
-        <td>🟠 Seuil</td>
-        <td>85–90%</td>
-         <td>{Math.round((Number(profileFcMax) - Number(profileFcRest)) * 0.88 + Number(profileFcRest))} bpm</td>
-      </tr>
+        {activeTab === "admin" && isAdmin && (
+          <section className="admin-screen">
+            <h2>Demandes d’accès</h2>
 
-      <tr>
-        <td>🔴 Intense</td>
-        <td>90–95%</td>
-         <td>{Math.round((Number(profileFcMax) - Number(profileFcRest)) * 0.92 + Number(profileFcRest))} bpm</td>
-      </tr>
-    </tbody>
-  </table>
+            {pendingProfiles.length === 0 ? (
+              <p className="empty-message">Aucune demande en attente</p>
+            ) : (
+              <div className="admin-list">
+                {pendingProfiles.map((profile) => (
+                  <div key={profile.id} className="admin-card">
+                    <div>
+                      <strong>
+                        {profile.firstname} {profile.lastname}
+                      </strong>
+                      <p>{profile.email || profile.pseudo || "Nouvel adhérent"}</p>
+                    </div>
 
-  <div className="zone-info-box">
-    <p><strong>SV1</strong> ≈ 75–80% VMA • 70–78% FC réserve</p>
-    <p><strong>SV2 / seuil</strong> ≈ 85–90% VMA • 85–90% FC réserve</p>
-  </div>
-</div>
-</section>
+                    <div className="admin-actions">
+                      <button
+                        className="primary-btn"
+                        onClick={() => approveProfile(profile.id)}
+                      >
+                        Approuver
+                      </button>
+
+                      <button
+                        className="danger-btn"
+                        onClick={() => deactivateProfile(profile.id)}
+                      >
+                        Supprimer
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         )}
 
         {activeTab === "notifications" && (
@@ -1118,15 +1306,15 @@ setShowAdminActions(false);
               </div>
 
               <div className="form-row">
-              <label>FC au repos</label>
-              <input
-                type="number"
-                 value={profileFcRest}
+                <label>FC au repos</label>
+                <input
+                  type="number"
+                  value={profileFcRest}
                   onChange={(e) => setProfileFcRest(e.target.value)}
-                    placeholder="Ex : 48"
-                    />
-                </div>
- 
+                  placeholder="Ex : 48"
+                />
+              </div>
+
               <div className="personal-goal-card">
                 <h3>Estimer ma VMA</h3>
                 <p>Renseigne une course récente pour obtenir une estimation.</p>
@@ -1171,6 +1359,17 @@ setShowAdminActions(false);
                 <label>Type</label>
                 <select value={formType} onChange={(e) => setFormType(e.target.value)}>
                   {SESSION_TYPES.map((type) => <option key={type}>{type}</option>)}
+                </select>
+              </div>
+
+              <div className="form-row">
+                <label>Objectif structuré</label>
+                <select value={formWorkoutMode} onChange={(e) => setFormWorkoutMode(e.target.value as WorkoutMode)}>
+                  <option value="">Automatique depuis la description</option>
+                  <option value="vma">Fractionné VMA</option>
+                  <option value="fc">Pourcentage FC max</option>
+                  <option value="seuil">Seuil</option>
+                  <option value="10km">Allure 10 km</option>
                 </select>
               </div>
 
@@ -1247,7 +1446,7 @@ setShowAdminActions(false);
                 )}
               </div>
 
-                           <div className="participation-grid">
+              <div className="participation-grid">
                 <div className="participation-column">
                   <button
                     className={`participant-count ${
