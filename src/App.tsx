@@ -451,55 +451,57 @@ export default function CalendarApp() {
   }
 
   async function approveProfile(profileId: string) {
-  if (!user || !isAdmin) return;
+    if (!user || !isAdmin) return;
 
-  setApprovingProfileId(profileId);
+    setApprovingProfileId(profileId);
 
-  const { error } = await supabase
-    .from("profiles")
-    .update({
-      approved: true,
-      active: true,
-      is_admin: false,
-      approved_at: new Date().toISOString(),
-      approved_by: user.id,
-    })
-    .eq("id", profileId);
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        approved: true,
+        active: true,
+        is_admin: false,
+        approved_at: new Date().toISOString(),
+        approved_by: user.id,
+      })
+      .eq("id", profileId);
 
-  if (error) {
-    alert("Erreur validation : " + error.message);
+    if (error) {
+      alert("Erreur validation : " + error.message);
+      setApprovingProfileId(null);
+      return;
+    }
+
+    await fetchPendingProfiles();
     setApprovingProfileId(null);
-    return;
   }
 
-  await fetchPendingProfiles();
-  setApprovingProfileId(null);
-}
-async function approveProfile(profileId: string) {
-  if (!user || !isAdmin) return;
+  async function approveAdminProfile(profileId: string) {
+    if (!user || !isAdmin) return;
 
-  setApprovingProfileId(profileId);
+    setApprovingAdminProfileId(profileId);
 
-  const { error } = await supabase
-    .from("profiles")
-    .update({
-      approved: true,
-      active: true,
-      is_admin: false,
-      approved_at: new Date().toISOString(),
-      approved_by: user.id,
-    })
-    .eq("id", profileId);
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        approved: true,
+        active: true,
+        is_admin: true,
+        approved_at: new Date().toISOString(),
+        approved_by: user.id,
+      })
+      .eq("id", profileId);
 
-  if (error) {
-    alert("Erreur validation : " + error.message);
-    setApprovingProfileId(null);
-    return;
+    if (error) {
+      alert("Erreur validation admin : " + error.message);
+      setApprovingAdminProfileId(null);
+      return;
+    }
+
+    await fetchPendingProfiles();
+    setApprovingAdminProfileId(null);
   }
 
-  await fetchPendingProfiles();
-  setApprovingProfileId(null);
-}
   async function deactivateProfile(profileId: string) {
     if (!isAdmin) return;
 
@@ -1269,23 +1271,25 @@ async function approveProfile(profileId: string) {
                       <p>{profile.email || profile.pseudo || "Nouvel adhérent"}</p>
                     </div>
 
-                    <button
-  className={`admin-choice-btn ${
-    approvingProfileId === profile.id ? "selected" : ""
-  }`}
-  onClick={() => approveProfile(profile.id)}
->
-  Approuver
-</button>
+                    <div className="admin-actions">
+                      <button
+                        className={`admin-choice-btn ${
+                          approvingProfileId === profile.id ? "selected" : ""
+                        }`}
+                        onClick={() => approveProfile(profile.id)}
+                      >
+                        Approuver
+                      </button>
 
-<button
-  className={`admin-choice-btn ${
-    approvingAdminProfileId === profile.id ? "selected" : ""
-  }`}
-  onClick={() => approveAdminProfile(profile.id)}
->
-  Nommer admin
-</button>
+                      <button
+                        className={`admin-choice-btn ${
+                          approvingAdminProfileId === profile.id ? "selected" : ""
+                        }`}
+                        onClick={() => approveAdminProfile(profile.id)}
+                      >
+                        Nommer admin
+                      </button>
+
                       <button
                         className="danger-btn"
                         onClick={() => deactivateProfile(profile.id)}
@@ -1401,31 +1405,6 @@ async function approveProfile(profileId: string) {
                   {SESSION_TYPES.map((type) => <option key={type}>{type}</option>)}
                 </select>
               </div>
-
-              <div className="form-row">
-                <label>Objectif structuré</label>
-                <select value={formWorkoutMode} onChange={(e) => setFormWorkoutMode(e.target.value as WorkoutMode)}>
-                  <option value="">Automatique depuis la description</option>
-                  <option value="vma">Fractionné VMA</option>
-                  <option value="fc">Pourcentage FC max</option>
-                  <option value="seuil">Seuil</option>
-                  <option value="10km">Allure 10 km</option>
-                </select>
-              </div>
-
-              {formWorkoutMode && formWorkoutMode !== "fc" && (
-                <div className="form-row">
-                  <label>Distance fraction en mètres</label>
-                  <input type="number" placeholder="Ex : 400" value={formFractionDistance} onChange={(e) => setFormFractionDistance(e.target.value)} />
-                </div>
-              )}
-
-              {formWorkoutMode && (
-                <div className="form-row">
-                  <label>Intensité en %</label>
-                  <input type="number" placeholder="Ex : 90" value={formIntensityPercent} onChange={(e) => setFormIntensityPercent(e.target.value)} />
-                </div>
-              )}
 
               <div className="form-row">
                 <label>Lieu</label>
