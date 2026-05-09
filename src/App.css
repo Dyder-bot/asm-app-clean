@@ -1146,5 +1146,13 @@ input:disabled {
   color: #111;
   box-shadow: 0 0 22px rgba(212, 225, 87, 0.35);
 }
+  .session-description {
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+.admin-section-title {
+  margin-top: 32px;
+}
 }
 }
