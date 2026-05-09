@@ -468,7 +468,27 @@ export default function CalendarApp() {
 
     fetchPendingProfiles();
   }
+async function approveAdminProfile(profileId: string) {
+  if (!user || !isAdmin) return;
 
+  const { error } = await supabase
+    .from("profiles")
+    .update({
+      approved: true,
+      active: true,
+      is_admin: true,
+      approved_at: new Date().toISOString(),
+      approved_by: user.id,
+    })
+    .eq("id", profileId);
+
+  if (error) {
+    alert("Erreur validation admin : " + error.message);
+    return;
+  }
+
+  fetchPendingProfiles();
+}
   async function deactivateProfile(profileId: string) {
     if (!isAdmin) return;
 
@@ -1246,6 +1266,12 @@ export default function CalendarApp() {
                         Approuver
                       </button>
 
+                      <button
+  className="secondary-btn"
+  onClick={() => approveAdminProfile(profile.id)}
+>
+  Approuver admin
+</button>
                       <button
                         className="danger-btn"
                         onClick={() => deactivateProfile(profile.id)}
