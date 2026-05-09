@@ -53,7 +53,7 @@ type Participant = {
   lastname?: string;
 };
 
-type PendingProfile = {
+type MemberProfile = {
   id: string;
   firstname?: string | null;
   lastname?: string | null;
@@ -131,10 +131,7 @@ const formatDuration = (seconds: number) => {
   const paddedMinutes = minutes.toString().padStart(2, "0");
   const paddedSeconds = secs.toString().padStart(2, "0");
 
-  if (hours > 0) {
-    return `${hours}h${paddedMinutes}'${paddedSeconds}`;
-  }
-
+  if (hours > 0) return `${hours}h${paddedMinutes}'${paddedSeconds}`;
   return `${minutes}'${paddedSeconds}`;
 };
 
@@ -302,10 +299,11 @@ export default function CalendarApp() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isApproved, setIsApproved] = useState(false);
   const [isActive, setIsActive] = useState(true);
-  const [pendingProfiles, setPendingProfiles] = useState<PendingProfile[]>([]);
-  const [approvedProfiles, setApprovedProfiles] = useState<PendingProfile[]>([]);
+  const [pendingProfiles, setPendingProfiles] = useState<MemberProfile[]>([]);
+  const [approvedProfiles, setApprovedProfiles] = useState<MemberProfile[]>([]);
   const [approvingProfileId, setApprovingProfileId] = useState<string | null>(null);
   const [approvingAdminProfileId, setApprovingAdminProfileId] = useState<string | null>(null);
+  const [deactivatingProfileId, setDeactivatingProfileId] = useState<string | null>(null);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -430,8 +428,8 @@ export default function CalendarApp() {
     setIsActive(data?.active !== false);
 
     if (data?.is_admin === true) {
-      fetchPendingProfiles();
-      fetchApprovedProfiles();
+      await fetchPendingProfiles();
+      await fetchApprovedProfiles();
     }
 
     setProfileLoaded(true);
@@ -440,7 +438,7 @@ export default function CalendarApp() {
   async function fetchPendingProfiles() {
     const { data, error } = await supabase
       .from("profiles")
-      .select("id, firstname, lastname, pseudo, email, approved, active")
+      .select("id, firstname, lastname, pseudo, email, is_admin, approved, active")
       .eq("approved", false)
       .eq("active", true)
       .order("firstname", { ascending: true });
@@ -450,23 +448,28 @@ export default function CalendarApp() {
       return;
     }
 
-    setPendingProfiles((data || []) as PendingProfile[]);
+    setPendingProfiles((data || []) as MemberProfile[]);
   }
 
   async function fetchApprovedProfiles() {
     const { data, error } = await supabase
       .from("profiles")
-      .select("id, firstname, lastname, pseudo, email, approved, active, is_admin")
+      .select("id, firstname, lastname, pseudo, email, is_admin, approved, active")
       .eq("approved", true)
       .eq("active", true)
       .order("firstname", { ascending: true });
 
     if (error) {
-      alert("Erreur chargement membres admis : " + error.message);
+      alert("Erreur chargement membres : " + error.message);
       return;
     }
 
-    setApprovedProfiles((data || []) as PendingProfile[]);
+    setApprovedProfiles((data || []) as MemberProfile[]);
+  }
+
+  async function refreshAdminLists() {
+    await fetchPendingProfiles();
+    await fetchApprovedProfiles();
   }
 
   async function approveProfile(profileId: string) {
@@ -491,8 +494,7 @@ export default function CalendarApp() {
       return;
     }
 
-    await fetchPendingProfiles();
-    await fetchApprovedProfiles();
+    await refreshAdminLists();
     setApprovingProfileId(null);
   }
 
@@ -518,32 +520,35 @@ export default function CalendarApp() {
       return;
     }
 
-    await fetchPendingProfiles();
-    await fetchApprovedProfiles();
+    await refreshAdminLists();
     setApprovingAdminProfileId(null);
   }
 
   async function deactivateProfile(profileId: string) {
     if (!isAdmin) return;
 
-    const confirmDelete = window.confirm("Retirer l’accès à cette personne ?");
+    const confirmDelete = window.confirm("Retirer l'accès de cette personne ?");
     if (!confirmDelete) return;
+
+    setDeactivatingProfileId(profileId);
 
     const { error } = await supabase
       .from("profiles")
       .update({
         active: false,
         approved: false,
+        is_admin: false,
       })
       .eq("id", profileId);
 
     if (error) {
       alert("Erreur suppression : " + error.message);
+      setDeactivatingProfileId(null);
       return;
     }
 
-    fetchPendingProfiles();
-    fetchApprovedProfiles();
+    await refreshAdminLists();
+    setDeactivatingProfileId(null);
   }
 
   async function saveMyProfile() {
@@ -763,7 +768,7 @@ export default function CalendarApp() {
       start_time: formStartTime,
       end_time: formEndTime,
       location: formLocation.trim(),
-      description: formDescription.trim(),
+      description: formDescription,
       image_url: imageUrl,
       gpx_url: gpxUrl,
       created_by: user.id,
@@ -1083,7 +1088,7 @@ export default function CalendarApp() {
               onClick={() => {
                 setActiveTab("admin");
                 setShowMenu(false);
-                fetchPendingProfiles();
+                refreshAdminLists();
               }}
             >
               ✅ Demandes d’accès{pendingProfiles.length > 0 ? ` (${pendingProfiles.length})` : ""}
@@ -1287,31 +1292,23 @@ export default function CalendarApp() {
                 {pendingProfiles.map((profile) => (
                   <div key={profile.id} className="admin-card">
                     <div>
-                      <strong>
-                        {profile.firstname} {profile.lastname}
-                      </strong>
+                      <strong>{profile.firstname} {profile.lastname}</strong>
                       <p>{profile.email || profile.pseudo || "Nouvel adhérent"}</p>
                     </div>
 
                     <div className="admin-actions">
                       <button
-                        className={`admin-choice-btn ${
-                          approvingProfileId === profile.id ? "selected" : ""
-                        }`}
+                        className={`admin-choice-btn ${approvingProfileId === profile.id ? "selected" : ""}`}
                         onClick={() => approveProfile(profile.id)}
-                        disabled={approvingProfileId === profile.id || approvingAdminProfileId === profile.id}
                       >
-                        {approvingProfileId === profile.id ? "Approuvé" : "Approuver"}
+                        Approuver
                       </button>
 
                       <button
-                        className={`admin-choice-btn ${
-                          approvingAdminProfileId === profile.id ? "selected" : ""
-                        }`}
+                        className={`admin-choice-btn ${approvingAdminProfileId === profile.id ? "selected" : ""}`}
                         onClick={() => approveAdminProfile(profile.id)}
-                        disabled={approvingProfileId === profile.id || approvingAdminProfileId === profile.id}
                       >
-                        {approvingAdminProfileId === profile.id ? "Admin nommé" : "Nommer admin"}
+                        Nommer admin
                       </button>
 
                       <button
@@ -1329,24 +1326,22 @@ export default function CalendarApp() {
             <h2 className="admin-section-title">Membres admis</h2>
 
             {approvedProfiles.length === 0 ? (
-              <p className="empty-message">Aucun membre admis pour le moment</p>
+              <p className="empty-message">Aucun membre admis</p>
             ) : (
               <div className="admin-list">
                 {approvedProfiles.map((profile) => (
                   <div key={profile.id} className="admin-card">
                     <div>
-                      <strong>
-                        {profile.firstname} {profile.lastname}
-                      </strong>
+                      <strong>{profile.firstname} {profile.lastname}</strong>
                       <p>
-                        {profile.email || profile.pseudo || "Adhérent validé"}
+                        {profile.email || profile.pseudo || "Membre"}
                         {profile.is_admin ? " • Admin" : ""}
                       </p>
                     </div>
 
                     <div className="admin-actions">
                       <button
-                        className="danger-btn"
+                        className={`danger-btn ${deactivatingProfileId === profile.id ? "selected" : ""}`}
                         onClick={() => deactivateProfile(profile.id)}
                       >
                         Retirer l’accès
@@ -1598,7 +1593,7 @@ export default function CalendarApp() {
                         <p>Distance : {personalGoal.distance} m</p>
                       )}
                       <p>
-                        Terrain :{" "}
+                        Terrain:{" "}
                         {personalGoal.surface === "trail"
                           ? "Trail / côte"
                           : "Route"}
@@ -1608,7 +1603,7 @@ export default function CalendarApp() {
                       <p>Allure cible : {formatPace(personalGoal.pace)}</p>
                       {personalGoal.timeSeconds && (
                         <p>
-                          Temps cible :{" "}
+                          Temps cible:{" "}
                           {formatDuration(personalGoal.timeSeconds)}
                         </p>
                       )}
