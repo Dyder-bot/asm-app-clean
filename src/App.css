@@ -1131,5 +1131,20 @@ input:disabled {
   padding: 12px;
   font-size: 14px;
 }
+  .admin-choice-btn {
+  background: #111;
+  color: var(--asm-yellow);
+  border: 1px solid rgba(212, 225, 87, 0.45);
+  border-radius: 18px;
+  padding: 14px;
+  font-weight: 900;
+  font-size: 14px;
+}
+
+.admin-choice-btn.selected {
+  background: var(--asm-yellow);
+  color: #111;
+  box-shadow: 0 0 22px rgba(212, 225, 87, 0.35);
+}
 }
 }
