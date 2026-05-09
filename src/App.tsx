@@ -302,6 +302,8 @@ export default function CalendarApp() {
   const [isApproved, setIsApproved] = useState(false);
   const [isActive, setIsActive] = useState(true);
   const [pendingProfiles, setPendingProfiles] = useState<PendingProfile[]>([]);
+  const [approvingProfileId, setApprovingProfileId] = useState<string | null>(null);
+  const [approvingAdminProfileId, setApprovingAdminProfileId] = useState<string | null>(null);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -449,45 +451,54 @@ export default function CalendarApp() {
   }
 
   async function approveProfile(profileId: string) {
-    if (!user || !isAdmin) return;
-
-    const { error } = await supabase
-      .from("profiles")
-      .update({
-        approved: true,
-        approved_at: new Date().toISOString(),
-        approved_by: user.id,
-        active: true,
-      })
-      .eq("id", profileId);
-
-    if (error) {
-      alert("Erreur validation : " + error.message);
-      return;
-    }
-
-    fetchPendingProfiles();
-  }
-async function approveAdminProfile(profileId: string) {
   if (!user || !isAdmin) return;
+
+  setApprovingProfileId(profileId);
 
   const { error } = await supabase
     .from("profiles")
     .update({
       approved: true,
       active: true,
-      is_admin: true,
+      is_admin: false,
       approved_at: new Date().toISOString(),
       approved_by: user.id,
     })
     .eq("id", profileId);
 
   if (error) {
-    alert("Erreur validation admin : " + error.message);
+    alert("Erreur validation : " + error.message);
+    setApprovingProfileId(null);
     return;
   }
 
-  fetchPendingProfiles();
+  await fetchPendingProfiles();
+  setApprovingProfileId(null);
+}
+async function approveProfile(profileId: string) {
+  if (!user || !isAdmin) return;
+
+  setApprovingProfileId(profileId);
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({
+      approved: true,
+      active: true,
+      is_admin: false,
+      approved_at: new Date().toISOString(),
+      approved_by: user.id,
+    })
+    .eq("id", profileId);
+
+  if (error) {
+    alert("Erreur validation : " + error.message);
+    setApprovingProfileId(null);
+    return;
+  }
+
+  await fetchPendingProfiles();
+  setApprovingProfileId(null);
 }
   async function deactivateProfile(profileId: string) {
     if (!isAdmin) return;
@@ -1258,19 +1269,22 @@ async function approveAdminProfile(profileId: string) {
                       <p>{profile.email || profile.pseudo || "Nouvel adhérent"}</p>
                     </div>
 
-                    <div className="admin-actions">
-                      <button
-                        className="primary-btn"
-                        onClick={() => approveProfile(profile.id)}
-                      >
-                        Approuver
-                      </button>
+                    <button
+  className={`admin-choice-btn ${
+    approvingProfileId === profile.id ? "selected" : ""
+  }`}
+  onClick={() => approveProfile(profile.id)}
+>
+  Approuver
+</button>
 
-                      <button
-  className="secondary-btn"
+<button
+  className={`admin-choice-btn ${
+    approvingAdminProfileId === profile.id ? "selected" : ""
+  }`}
   onClick={() => approveAdminProfile(profile.id)}
 >
-  Approuver admin
+  Nommer admin
 </button>
                       <button
                         className="danger-btn"
