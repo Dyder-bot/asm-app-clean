@@ -507,25 +507,47 @@ const [newPassword, setNewPassword] = useState("");
 
   setProfileLoaded(false);
 
+  const userEmail = user.email || "";
+
   let { data, error } = await supabase
     .from("profiles")
     .select("id, firstname, lastname, pseudo, sexe, vma, fc_max, fc_rest, is_admin, approved, active, email")
     .eq("id", user.id)
     .maybeSingle();
 
-  if ((!data || error) && user.email) {
+  if (!data && userEmail) {
     const result = await supabase
       .from("profiles")
       .select("id, firstname, lastname, pseudo, sexe, vma, fc_max, fc_rest, is_admin, approved, active, email")
-      .ilike("email", user.email)
+      .ilike("email", userEmail)
       .maybeSingle();
 
     data = result.data;
     error = result.error;
   }
 
+  if (!data && userEmail.toLowerCase() === "foucatdidier@gmail.com") {
+    const { data: insertedProfile, error: insertError } = await supabase
+      .from("profiles")
+      .upsert({
+        id: user.id,
+        firstname: "Didier",
+        lastname: "Foucat",
+        pseudo: "Didier F.",
+        email: userEmail,
+        approved: true,
+        active: true,
+        is_admin: true,
+      })
+      .select("id, firstname, lastname, pseudo, sexe, vma, fc_max, fc_rest, is_admin, approved, active, email")
+      .single();
+
+    data = insertedProfile;
+    error = insertError;
+  }
+
   if (error || !data) {
-    alert("Profil introuvable pour : " + user.email);
+    alert("Profil introuvable pour : " + userEmail + " / " + (error?.message || "aucune donnée"));
     setIsAdmin(false);
     setIsApproved(false);
     setIsActive(false);
@@ -533,24 +555,23 @@ const [newPassword, setNewPassword] = useState("");
     return;
   }
 
-  setFirstname(data?.firstname || "");
-  setLastname(data?.lastname || "");
-  setProfileSexe(data?.sexe || "");
-  setProfileVma(data?.vma ? String(data.vma) : "");
-  setProfileFcMax(data?.fc_max ? String(data.fc_max) : "");
-  setProfileFcRest(data?.fc_rest ? String(data.fc_rest) : "");
-  setIsAdmin(data?.is_admin === true);
-  setIsApproved(data?.approved === true);
-  setIsActive(data?.active !== false);
+  setFirstname(data.firstname || "");
+  setLastname(data.lastname || "");
+  setProfileSexe(data.sexe || "");
+  setProfileVma(data.vma ? String(data.vma) : "");
+  setProfileFcMax(data.fc_max ? String(data.fc_max) : "");
+  setProfileFcRest(data.fc_rest ? String(data.fc_rest) : "");
+  setIsAdmin(data.is_admin === true);
+  setIsApproved(data.approved === true);
+  setIsActive(data.active !== false);
 
-  if (data?.is_admin === true) {
+  if (data.is_admin === true) {
     await fetchPendingProfiles();
     await fetchApprovedProfiles();
   }
 
   setProfileLoaded(true);
 }
-
   async function fetchPendingProfiles() {
     const { data, error } = await supabase
       .from("profiles")
