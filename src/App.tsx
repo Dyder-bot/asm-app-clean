@@ -635,12 +635,31 @@ const [newPassword, setNewPassword] = useState("");
   }, [chronoStorageKey, personalChronos]);
 
   const chronoEvolutionGroups = useMemo(() => {
-    const grouped = personalChronos.reduce<Record<string, { id: string; date: string; chrono: string; seconds: number }[]>>(
+    type ChronoEvolutionItem = {
+      id: string;
+      date: string;
+      chrono: string;
+      seconds: number;
+      theoreticalSeconds?: number;
+      theoreticalChrono?: string;
+    };
+
+    const grouped = personalChronos.reduce<Record<string, ChronoEvolutionItem[]>>(
       (acc, chrono) => {
         const seconds = parseChronoToSeconds(chrono.chrono);
         if (!seconds) return acc;
+
+        const theoretical = theoreticalChronoFromVma(chrono.distance, chrono.vmaAtEntry || profileVma);
+
         acc[chrono.distance] = acc[chrono.distance] || [];
-        acc[chrono.distance].push({ id: chrono.id, date: chrono.date, chrono: chrono.chrono, seconds });
+        acc[chrono.distance].push({
+          id: chrono.id,
+          date: chrono.date,
+          chrono: chrono.chrono,
+          seconds,
+          theoreticalSeconds: theoretical?.seconds,
+          theoreticalChrono: theoretical?.label,
+        });
         return acc;
       },
       {}
@@ -654,29 +673,64 @@ const [newPassword, setNewPassword] = useState("");
         const last = sorted[sorted.length - 1];
         const gainSeconds = first.seconds - last.seconds;
         const progressPercent = gainSeconds > 0 ? ((gainSeconds / first.seconds) * 100).toFixed(1) : null;
-        const minSeconds = Math.min(...sorted.map((item) => item.seconds));
-        const maxSeconds = Math.max(...sorted.map((item) => item.seconds));
+        const theoreticalValues = sorted
+          .map((item) => item.theoreticalSeconds)
+          .filter((value): value is number => Boolean(value));
+        const allValues = [...sorted.map((item) => item.seconds), ...theoreticalValues];
+        const minSeconds = Math.min(...allValues);
+        const maxSeconds = Math.max(...allValues);
         const range = Math.max(maxSeconds - minSeconds, 1);
-        const points = sorted
-          .map((item, index) => {
-            const x = sorted.length === 1 ? 12 : 12 + (index / (sorted.length - 1)) * 276;
-            const y = 18 + ((item.seconds - minSeconds) / range) * 84;
-            return `${x},${y}`;
-          })
+        const toPoint = (seconds: number, index: number) => {
+          const x = sorted.length === 1 ? 12 : 12 + (index / (sorted.length - 1)) * 276;
+          const y = 18 + ((seconds - minSeconds) / range) * 84;
+          return `${x},${y}`;
+        };
+        const points = sorted.map((item, index) => toPoint(item.seconds, index)).join(" ");
+        const theoreticalPoints = sorted
+          .map((item, index) => (item.theoreticalSeconds ? toPoint(item.theoreticalSeconds, index) : null))
+          .filter(Boolean)
           .join(" ");
+        const lastTheoretical = [...sorted].reverse().find((item) => item.theoreticalSeconds);
+        const isBetterThanTheoretical = Boolean(
+          lastTheoretical?.theoreticalSeconds && last.seconds < lastTheoretical.theoreticalSeconds
+        );
+        const theoreticalGapSeconds =
+          lastTheoretical?.theoreticalSeconds && last.seconds < lastTheoretical.theoreticalSeconds
+            ? Math.round(lastTheoretical.theoreticalSeconds - last.seconds)
+            : null;
 
-        return { distance, sorted, first, last, gainSeconds, progressPercent, points };
+        return {
+          distance,
+          sorted,
+          first,
+          last,
+          gainSeconds,
+          progressPercent,
+          points,
+          theoreticalPoints,
+          lastTheoretical,
+          isBetterThanTheoretical,
+          theoreticalGapSeconds,
+          minSeconds,
+          maxSeconds,
+        };
       })
       .filter(Boolean) as {
       distance: string;
-      sorted: { id: string; date: string; chrono: string; seconds: number }[];
-      first: { id: string; date: string; chrono: string; seconds: number };
-      last: { id: string; date: string; chrono: string; seconds: number };
+      sorted: ChronoEvolutionItem[];
+      first: ChronoEvolutionItem;
+      last: ChronoEvolutionItem;
       gainSeconds: number;
       progressPercent: string | null;
       points: string;
+      theoreticalPoints: string;
+      lastTheoretical?: ChronoEvolutionItem;
+      isBetterThanTheoretical: boolean;
+      theoreticalGapSeconds: number | null;
+      minSeconds: number;
+      maxSeconds: number;
     }[];
-  }, [personalChronos]);
+  }, [personalChronos, profileVma]);
 
 
   async function addPersonalChrono() {
@@ -2020,24 +2074,59 @@ if (isPasswordRecovery) {
                       </div>
                     </div>
 
+                    <div
+                      style={{
+                        marginTop: 12,
+                        display: "flex",
+                        gap: 12,
+                        flexWrap: "wrap",
+                        fontSize: 13,
+                        fontWeight: 800,
+                      }}
+                    >
+                      <span style={{ color: "#ffd400" }}>● Chronos réalisés</span>
+                      {group.theoreticalPoints && <span style={{ color: "rgba(255,255,255,0.72)" }}>● Chronos théoriques VMA</span>}
+                    </div>
+
                     <svg viewBox="0 0 300 120" width="100%" height="120" style={{ marginTop: 12, overflow: "visible" }}>
                       <line x1="12" y1="102" x2="288" y2="102" stroke="rgba(255,255,255,0.12)" strokeWidth="2" />
                       <line x1="12" y1="18" x2="12" y2="102" stroke="rgba(255,255,255,0.12)" strokeWidth="2" />
+
+                      {group.theoreticalPoints && (
+                        <polyline
+                          points={group.theoreticalPoints}
+                          fill="none"
+                          stroke="rgba(255,255,255,0.55)"
+                          strokeWidth="4"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeDasharray="8 7"
+                        />
+                      )}
+
                       <polyline
                         points={group.points}
                         fill="none"
-                        stroke="#d6e83b"
+                        stroke="#ffd400"
                         strokeWidth="5"
                         strokeLinecap="round"
                         strokeLinejoin="round"
                       />
+
                       {group.sorted.map((item, index) => {
-                        const minSeconds = Math.min(...group.sorted.map((chrono) => chrono.seconds));
-                        const maxSeconds = Math.max(...group.sorted.map((chrono) => chrono.seconds));
-                        const range = Math.max(maxSeconds - minSeconds, 1);
+                        const range = Math.max(group.maxSeconds - group.minSeconds, 1);
                         const x = group.sorted.length === 1 ? 12 : 12 + (index / (group.sorted.length - 1)) * 276;
-                        const y = 18 + ((item.seconds - minSeconds) / range) * 84;
-                        return <circle key={item.id} cx={x} cy={y} r="5" fill="#ffd400" />;
+                        const y = 18 + ((item.seconds - group.minSeconds) / range) * 84;
+                        const theoreticalY = item.theoreticalSeconds
+                          ? 18 + ((item.theoreticalSeconds - group.minSeconds) / range) * 84
+                          : null;
+
+                        return (
+                          <g key={item.id}>
+                            {theoreticalY !== null && <circle cx={x} cy={theoreticalY} r="4" fill="rgba(255,255,255,0.75)" />}
+                            <circle cx={x} cy={y} r="5" fill="#ffd400" />
+                          </g>
+                        );
                       })}
                     </svg>
 
@@ -2056,6 +2145,12 @@ if (isPasswordRecovery) {
                       ) : (
                         <p>
                           👏 Tu construis ton historique. Les prochains chronos permettront de mieux voir ta progression.
+                        </p>
+                      )}
+
+                      {group.isBetterThanTheoretical && group.lastTheoretical?.theoreticalChrono && group.theoreticalGapSeconds && (
+                        <p style={{ marginTop: 8, color: "#ffd400", fontWeight: 900 }}>
+                          🏆 Ton dernier chrono est meilleur que le repère théorique VMA : {group.lastTheoretical.theoreticalChrono} théorique → {group.last.chrono} réalisé, soit {formatChronoFromSeconds(group.theoreticalGapSeconds)} de mieux.
                         </p>
                       )}
                     </div>
