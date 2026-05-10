@@ -92,6 +92,13 @@ type PersonalGoal =
       timeSeconds?: number;
     }
   | {
+      type: "effort";
+      title: string;
+      detail: string;
+      fcLabel?: string;
+      surface: "trail" | "route";
+    }
+  | {
       type: "allure";
       pace: number;
     };
@@ -225,6 +232,7 @@ function calculateTargetFromText(
   const seuilMatch = text.match(/(\d+)\s*[x×]\s*(\d+)'?\s*(au\s*)?seuil/);
   const km10Match = text.match(/(\d+)\s*[x×]\s*(\d+)\s*(m|km)?\s*.*?(allure\s*)?(10\s?km)/);
   const allureMatch = text.match(/allure\s*(\d+)'(\d{1,2})"?/);
+  const seuilIntervalMatch = text.match(/(\d+)\s*[x×]\s*(\d+)\s*["”]?\s*\/\s*(\d+)\s*["”]?\s*.*?seuil/);
 
   if (vmaMatch && vma > 0) {
     const repetitions = Number(vmaMatch[1]);
@@ -236,9 +244,19 @@ function calculateTargetFromText(
     return { type: "vma", repetitions, distance, percent, vma, pace, timeSeconds };
   }
 
-  if (fcMatch && fcMax > 0) {
-    const percent = Number(fcMatch[1]);
-    return { type: "fc", percent, fcMax, targetFc: Math.round((fcMax * percent) / 100) };
+  if (seuilIntervalMatch) {
+    const repetitions = Number(seuilIntervalMatch[1]);
+    const workSeconds = Number(seuilIntervalMatch[2]);
+
+    return {
+      type: "effort",
+      title: `${repetitions} × ${workSeconds}"/${seuilIntervalMatch[3]}" au seuil`,
+      detail: isTrailSession
+        ? "Travail au seuil en terrain variable : privilégier l’effort et la respiration, sans chercher une allure fixe."
+        : "Travail au seuil court : rester contrôlé, régulier, sans partir trop vite.",
+      fcLabel: isTrailSession ? "Repère : zone SV2 / environ 85–90% FC max" : "Repère : environ 85–90% VMA ou zone SV2",
+      surface: isTrailSession ? "trail" : "route",
+    };
   }
 
   if (seuilMatch && vma > 0) {
@@ -280,6 +298,11 @@ function calculateTargetFromText(
     };
   }
 
+  if (fcMatch && fcMax > 0) {
+    const percent = Number(fcMatch[1]);
+    return { type: "fc", percent, fcMax, targetFc: Math.round((fcMax * percent) / 100) };
+  }
+
   if (allureMatch) {
     const minutes = Number(allureMatch[1]);
     const seconds = Number(allureMatch[2]);
@@ -287,6 +310,64 @@ function calculateTargetFromText(
   }
 
   return null;
+}
+
+function calculateTargetsFromText(
+  session: Session,
+  profileVma: string,
+  profileFcMax: string
+): PersonalGoal[] {
+  const rawText = `${session.title || ""}\n${session.description || ""}`;
+  const lines = rawText
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  const goals: PersonalGoal[] = [];
+
+  for (const line of lines) {
+    const lineSession: Session = {
+      ...session,
+      title: line,
+      description: line,
+    };
+
+    const goal = calculateTargetFromText(lineSession, profileVma, profileFcMax);
+
+    if (goal) {
+      goals.push(goal);
+      continue;
+    }
+
+    const lower = line.toLowerCase();
+    const isTrailOrHill =
+      session.type?.toLowerCase().includes("trail") ||
+      lower.includes("côte") ||
+      lower.includes("cote") ||
+      lower.includes("montée") ||
+      lower.includes("montee") ||
+      lower.includes("d+") ||
+      lower.includes("dénivelé");
+
+    if (lower.includes("seuil")) {
+      goals.push({
+        type: "effort",
+        title: line,
+        detail: isTrailOrHill
+          ? "Travail au seuil en côte/trail : garder un effort contrôlé, sans chercher l’allure route."
+          : "Travail au seuil : effort difficile mais maîtrisé, proche SV2.",
+        fcLabel: isTrailOrHill ? "Repère : environ 85–90% FC max" : "Repère : environ 85–90% VMA ou zone SV2",
+        surface: isTrailOrHill ? "trail" : "route",
+      });
+    }
+  }
+
+  const uniqueGoals = goals.filter((goal, index) => {
+    const key = JSON.stringify(goal);
+    return goals.findIndex((item) => JSON.stringify(item) === key) === index;
+  });
+
+  return uniqueGoals;
 }
 
 export default function CalendarApp() {
@@ -328,6 +409,7 @@ export default function CalendarApp() {
 
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [showParticipantList, setShowParticipantList] = useState<ParticipationStatus | null>(null);
+  const [selectedGoalIndex, setSelectedGoalIndex] = useState(0);
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
     return window.localStorage.getItem("asm-notifications") === "true";
   });
@@ -374,10 +456,13 @@ export default function CalendarApp() {
   const displayedParticipantList =
     showParticipantList === "present" ? presentParticipants : interestedParticipants;
 
-  const personalGoal = selectedSession && myParticipation === "present"
-    ? calculateTargetFromStructuredSession(selectedSession, profileVma, profileFcMax) ||
-      calculateTargetFromText(selectedSession, profileVma, profileFcMax)
-    : null;
+  const personalGoals = selectedSession && myParticipation === "present"
+    ? (() => {
+        const textGoals = calculateTargetsFromText(selectedSession, profileVma, profileFcMax);
+        const structuredGoal = calculateTargetFromStructuredSession(selectedSession, profileVma, profileFcMax);
+        return textGoals.length > 0 ? textGoals : structuredGoal ? [structuredGoal] : [];
+      })()
+    : [];
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -399,6 +484,7 @@ export default function CalendarApp() {
       return;
     }
 
+    setSelectedGoalIndex(0);
     fetchParticipants(selectedSession.id);
   }, [selectedSession]);
 
@@ -1562,64 +1648,129 @@ export default function CalendarApp() {
                 </div>
               </div>
 
-              {personalGoal && (
-                <div className="personal-goal-card">
-                  <h3>🎯 Mon objectif personnalisé</h3>
+              {personalGoals.length > 0 && (
+                <div className="personal-goals-wrapper">
+                  {personalGoals.map((personalGoal, goalIndex) => (
+                    <div
+                      key={`${personalGoal.type}-${goalIndex}`}
+                      className={`personal-goal-card ${
+                        selectedGoalIndex === goalIndex ? "selected-goal" : ""
+                      }`}
+                    >
+                      <h3>🎯 Objectif {goalIndex + 1}</h3>
 
-                  {personalGoal.type === "vma" && (
-                    <>
-                      <p>
-                        Séance :{" "}
-                        {personalGoal.repetitions
-                          ? `${personalGoal.repetitions} × `
-                          : ""}
-                        {personalGoal.distance} m
-                      </p>
-                      <p>VMA utilisée : {personalGoal.vma} km/h</p>
-                      <p>Intensité : {personalGoal.percent}% VMA</p>
-                      <p>Allure cible : {formatPace(personalGoal.pace)}</p>
-                      <p>
-                        Temps cible : {formatDuration(personalGoal.timeSeconds)} par
-                        fraction
-                      </p>
-                    </>
-                  )}
-
-                  {personalGoal.type === "fc" && (
-                    <>
-                      <p>FC max utilisée : {personalGoal.fcMax} bpm</p>
-                      <p>Intensité : {personalGoal.percent}% FC max</p>
-                      <p>Fréquence cible : {personalGoal.targetFc} bpm</p>
-                    </>
-                  )}
-
-                  {(personalGoal.type === "seuil" ||
-                    personalGoal.type === "10km") && (
-                    <>
-                      {personalGoal.distance && (
-                        <p>Distance : {personalGoal.distance} m</p>
+                      {personalGoal.type === "vma" && (
+                        <>
+                          <p>
+                            Séance :{" "}
+                            {personalGoal.repetitions
+                              ? `${personalGoal.repetitions} × `
+                              : ""}
+                            {personalGoal.distance} m
+                          </p>
+                          <p>VMA utilisée : {personalGoal.vma} km/h</p>
+                          <p>Intensité : {personalGoal.percent}% VMA</p>
+                          <p>Allure cible : {formatPace(personalGoal.pace)}</p>
+                          <p>
+                            Temps cible : {formatDuration(personalGoal.timeSeconds)} par
+                            fraction
+                          </p>
+                        </>
                       )}
-                      <p>
-                        Terrain:{" "}
-                        {personalGoal.surface === "trail"
-                          ? "Trail / côte"
-                          : "Route"}
-                      </p>
-                      <p>VMA utilisée : {personalGoal.vma} km/h</p>
-                      <p>Intensité : {personalGoal.percent}% VMA</p>
-                      <p>Allure cible : {formatPace(personalGoal.pace)}</p>
-                      {personalGoal.timeSeconds && (
-                        <p>
-                          Temps cible:{" "}
-                          {formatDuration(personalGoal.timeSeconds)}
-                        </p>
-                      )}
-                    </>
-                  )}
 
-                  {personalGoal.type === "allure" && (
-                    <p>Allure cible : {formatPace(personalGoal.pace)}</p>
-                  )}
+                      {personalGoal.type === "fc" && (
+                        <>
+                          <p>FC max utilisée : {personalGoal.fcMax} bpm</p>
+                          <p>Intensité : {personalGoal.percent}% FC max</p>
+                          <p>Fréquence cible : {personalGoal.targetFc} bpm</p>
+                        </>
+                      )}
+
+                      {(personalGoal.type === "seuil" ||
+                        personalGoal.type === "10km") && (
+                        <>
+                          {personalGoal.distance && (
+                            <p>Distance : {personalGoal.distance} m</p>
+                          )}
+
+                          {personalGoal.durationMin && (
+                            <p>Durée : {personalGoal.durationMin}'</p>
+                          )}
+
+                          <p>
+                            Terrain :{" "}
+                            {personalGoal.surface === "trail"
+                              ? "Trail / côte"
+                              : "Route"}
+                          </p>
+
+                          {personalGoal.type === "seuil" &&
+                          personalGoal.surface === "trail" ? (
+                            <>
+                              <p>
+                                Objectif : effort seuil contrôlé en côte, sans
+                                chercher l’allure route.
+                              </p>
+
+                              {profileFcMax ? (
+                                <p>
+                                  Repère cardio : environ{" "}
+                                  {Math.round(Number(profileFcMax) * 0.85)} à{" "}
+                                  {Math.round(Number(profileFcMax) * 0.9)} bpm
+                                  {" "}({`85–90% FC max`})
+                                </p>
+                              ) : (
+                                <p>Repère cardio : environ 85–90% FC max</p>
+                              )}
+
+                              <p>
+                                Repère sensation : effort difficile mais maîtrisé,
+                                proche SV2, à adapter à la pente et au terrain.
+                              </p>
+                            </>
+                          ) : (
+                            <>
+                              <p>VMA utilisée : {personalGoal.vma} km/h</p>
+                              <p>Intensité : {personalGoal.percent}% VMA</p>
+                              <p>Allure cible : {formatPace(personalGoal.pace)}</p>
+
+                              {personalGoal.timeSeconds && (
+                                <p>
+                                  Temps cible :{" "}
+                                  {formatDuration(personalGoal.timeSeconds)}
+                                </p>
+                              )}
+                            </>
+                          )}
+                        </>
+                      )}
+
+                      {personalGoal.type === "effort" && (
+                        <>
+                          <p>Séance : {personalGoal.title}</p>
+                          <p>{personalGoal.detail}</p>
+                          {personalGoal.fcLabel && <p>{personalGoal.fcLabel}</p>}
+                        </>
+                      )}
+
+                      {personalGoal.type === "allure" && (
+                        <p>Allure cible : {formatPace(personalGoal.pace)}</p>
+                      )}
+
+                      {personalGoals.length > 1 && (
+                        <button
+                          className={`secondary-btn small-btn ${
+                            selectedGoalIndex === goalIndex ? "active-choice" : ""
+                          }`}
+                          onClick={() => setSelectedGoalIndex(goalIndex)}
+                        >
+                          {selectedGoalIndex === goalIndex
+                            ? "Objectif sélectionné"
+                            : "Choisir cet objectif"}
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
 
