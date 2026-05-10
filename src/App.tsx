@@ -77,6 +77,7 @@ type PersonalChrono = {
   theoreticalGainSeconds?: number;
   suggestedVma?: string;
   vmaAtEntry?: string;
+  vmaUpdated?: boolean;
 };
 
 type PersonalGoal =
@@ -255,6 +256,57 @@ function estimateVmaFromChronoDistance(distance: string, chronoSeconds: number) 
   const speed = settings.km / (chronoSeconds / 3600);
   return (speed / settings.percent).toFixed(1);
 }
+
+function chronoMotivationMessages(options: {
+  isPersonalRecord: boolean;
+  isTheoreticalRecord: boolean;
+  hasElevation: boolean;
+  chronosCount: number;
+  progressPercent: string | null;
+  vmaUpdated: boolean;
+}) {
+  const messages: string[] = [];
+
+  if (options.isPersonalRecord) {
+    messages.push("🏆 Bravo ! Nouveau record personnel enregistré.");
+    messages.push("🔥 Tu viens de franchir un vrai palier sur cette distance.");
+  }
+
+  if (options.isTheoreticalRecord) {
+    messages.push("⚡ Ton chrono est meilleur que ta performance théorique : ton niveau actuel progresse.");
+    messages.push("🎯 Ce résultat donne un nouveau repère pour ajuster tes allures d’entraînement.");
+  }
+
+  if (options.vmaUpdated) {
+    messages.push("🧠 Ta VMA a été ajustée dans ton profil à partir de ce nouveau repère de course.");
+  }
+
+  if (options.progressPercent && Number(options.progressPercent) >= 10) {
+    messages.push("📈 Depuis ton arrivée à l’ASM, ta progression est énorme. Le travail paie vraiment.");
+  } else if (options.progressPercent && Number(options.progressPercent) >= 5) {
+    messages.push("📈 Depuis ton arrivée à l’ASM, tu as déjà beaucoup progressé. C’est concret et ça se voit.");
+  }
+
+  if (options.chronosCount <= 1) {
+    messages.push("👏 Premier chrono enregistré : c’est ton point de départ pour suivre ta progression ASM.");
+    messages.push("🖤💛 Déjà un repère posé : maintenant, chaque course pourra montrer ton évolution.");
+  } else if (options.chronosCount <= 3) {
+    messages.push("🔥 Tu commences à construire ton historique : c’est comme ça qu’on voit les vrais progrès.");
+    messages.push("🚀 Continue, tes chronos donnent de plus en plus d’informations utiles pour t’entraîner juste.");
+  } else {
+    messages.push("💪 Ton suivi devient solide : chaque course aide à mieux ajuster tes entraînements.");
+    messages.push("📊 Ton historique ASM permet maintenant de voir une vraie tendance de progression.");
+  }
+
+  if (options.hasElevation) {
+    messages.push("⛰️ En trail, le D+ change tout : ce chrono doit être lu avec le profil du parcours.");
+  }
+
+  messages.push("🚀 Continue comme ça, tu es sur une très belle dynamique.");
+
+  return messages.slice(0, 6);
+}
+
 
 function calculateTargetFromStructuredSession(
   session: Session,
@@ -485,6 +537,7 @@ export default function CalendarApp() {
   const [profileFcRest, setProfileFcRest] = useState("");
   const [personalChronos, setPersonalChronos] = useState<PersonalChrono[]>([]);
   const [showChronoForm, setShowChronoForm] = useState(false);
+  const [showChronoEvolution, setShowChronoEvolution] = useState(false);
   const [chronoDistance, setChronoDistance] = useState("10 km");
   const [chronoRace, setChronoRace] = useState("");
   const [chronoTime, setChronoTime] = useState("");
@@ -528,7 +581,53 @@ const [newPassword, setNewPassword] = useState("");
     window.localStorage.setItem(chronoStorageKey, JSON.stringify(personalChronos));
   }, [chronoStorageKey, personalChronos]);
 
-  function addPersonalChrono() {
+  const chronoEvolutionGroups = useMemo(() => {
+    const grouped = personalChronos.reduce<Record<string, { id: string; date: string; chrono: string; seconds: number }[]>>(
+      (acc, chrono) => {
+        const seconds = parseChronoToSeconds(chrono.chrono);
+        if (!seconds) return acc;
+        acc[chrono.distance] = acc[chrono.distance] || [];
+        acc[chrono.distance].push({ id: chrono.id, date: chrono.date, chrono: chrono.chrono, seconds });
+        return acc;
+      },
+      {}
+    );
+
+    return Object.entries(grouped)
+      .map(([distance, items]) => {
+        const sorted = items.slice().sort((a, b) => a.date.localeCompare(b.date));
+        if (sorted.length < 2) return null;
+
+        const first = sorted[0];
+        const last = sorted[sorted.length - 1];
+        const gainSeconds = first.seconds - last.seconds;
+        const progressPercent = gainSeconds > 0 ? ((gainSeconds / first.seconds) * 100).toFixed(1) : null;
+        const minSeconds = Math.min(...sorted.map((item) => item.seconds));
+        const maxSeconds = Math.max(...sorted.map((item) => item.seconds));
+        const range = Math.max(maxSeconds - minSeconds, 1);
+        const points = sorted
+          .map((item, index) => {
+            const x = sorted.length === 1 ? 12 : 12 + (index / (sorted.length - 1)) * 276;
+            const y = 18 + ((item.seconds - minSeconds) / range) * 84;
+            return `${x},${y}`;
+          })
+          .join(" ");
+
+        return { distance, sorted, first, last, gainSeconds, progressPercent, points };
+      })
+      .filter(Boolean) as {
+      distance: string;
+      sorted: { id: string; date: string; chrono: string; seconds: number }[];
+      first: { id: string; date: string; chrono: string; seconds: number };
+      last: { id: string; date: string; chrono: string; seconds: number };
+      gainSeconds: number;
+      progressPercent: string | null;
+      points: string;
+    }[];
+  }, [personalChronos]);
+
+
+  async function addPersonalChrono() {
     const cleanedTime = chronoTime.trim();
     const currentSeconds = parseChronoToSeconds(cleanedTime);
 
@@ -550,7 +649,10 @@ const [newPassword, setNewPassword] = useState("");
     const previousChrono = previousBest && currentSeconds < previousBest.seconds ? previousBest.chrono : undefined;
     const theoretical = theoreticalChronoFromVma(chronoDistance, profileVma);
     const theoreticalGainSeconds = theoretical && currentSeconds < theoretical.seconds ? Math.round(theoretical.seconds - currentSeconds) : undefined;
-    const suggestedVma = theoreticalGainSeconds ? estimateVmaFromChronoDistance(chronoDistance, currentSeconds) : null;
+    const suggestedVma = estimateVmaFromChronoDistance(chronoDistance, currentSeconds);
+    const currentVma = Number(profileVma || 0);
+    const suggestedVmaNumber = Number(suggestedVma || 0);
+    const shouldUpdateVma = Boolean(suggestedVma && (!currentVma || suggestedVmaNumber > currentVma + 0.2));
 
     const newChrono: PersonalChrono = {
       id: `${Date.now()}`,
@@ -564,6 +666,7 @@ const [newPassword, setNewPassword] = useState("");
       theoreticalGainSeconds,
       suggestedVma: suggestedVma || undefined,
       vmaAtEntry: profileVma || undefined,
+      vmaUpdated: shouldUpdateVma,
     };
 
     setPersonalChronos((current) => [newChrono, ...current]);
@@ -572,6 +675,37 @@ const [newPassword, setNewPassword] = useState("");
     setChronoDate(new Date().toISOString().slice(0, 10));
     setChronoElevationGain("");
     setShowChronoForm(false);
+
+    if (shouldUpdateVma && suggestedVma) {
+      setProfileVma(suggestedVma);
+
+      if (user) {
+        const { error } = await supabase
+          .from("profiles")
+          .update({ vma: Number(suggestedVma) })
+          .eq("id", user.id);
+
+        if (error) {
+          alert(
+            "🏆 Super chrono enregistré ! Ta VMA estimée passe à " +
+              suggestedVma +
+              " km/h dans l'application, mais la sauvegarde Supabase a échoué : " +
+              error.message
+          );
+          return;
+        }
+      }
+
+      alert(
+        "🏆 Bravo ! Ce chrono montre que tu as franchi un cap.\n\n" +
+          "⚡ Nouveau repère VMA estimé : " +
+          suggestedVma +
+          " km/h.\n\n" +
+          "🖤💛 Ta VMA a été mise à jour dans ton profil pour que tes prochaines allures restent adaptées à ton niveau actuel."
+      );
+    } else if (previousChrono || theoreticalGainSeconds) {
+      alert("🏆 Bravo ! Nouveau chrono validé. Tu continues à construire ta progression ASM 💪");
+    }
   }
 
   function deletePersonalChrono(chronoId: string) {
@@ -1798,6 +1932,144 @@ if (isPasswordRecovery) {
               </div>
             )}
 
+            {chronoEvolutionGroups.length > 0 && (
+              <div className="performance-card" style={{ marginTop: 16 }}>
+                <h3>📈 Mon évolution</h3>
+                <p>
+                  Consulte ton graphique de progression depuis ton arrivée à l’ASM sans surcharger cette page.
+                </p>
+                <button
+                  type="button"
+                  className="primary-btn"
+                  onClick={() => setShowChronoEvolution(true)}
+                  style={{ marginTop: 12 }}
+                >
+                  📊 Voir mon graphique d’évolution
+                </button>
+              </div>
+            )}
+
+            {showChronoEvolution && (
+              <div
+                role="dialog"
+                aria-modal="true"
+                style={{
+                  position: "fixed",
+                  inset: 0,
+                  zIndex: 80,
+                  background: "rgba(0,0,0,0.88)",
+                  padding: 16,
+                  overflowY: "auto",
+                }}
+              >
+                <div
+                  className="performance-card"
+                  style={{
+                    maxWidth: 720,
+                    margin: "30px auto",
+                    border: "1px solid rgba(214,232,59,0.35)",
+                    boxShadow: "0 20px 60px rgba(0,0,0,0.45)",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+                    <div>
+                      <h3>📈 Mon évolution depuis l’ASM</h3>
+                      <p>
+                        Visualise tes chronos dans le temps. Plus la courbe descend, plus tu vas vite.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowChronoEvolution(false)}
+                      aria-label="Fermer le graphique"
+                      style={{
+                        width: 42,
+                        height: 42,
+                        borderRadius: 14,
+                        border: "1px solid rgba(255,255,255,0.15)",
+                        background: "rgba(255,255,255,0.08)",
+                        color: "#fff",
+                        fontSize: 22,
+                        fontWeight: 900,
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+
+                  {chronoEvolutionGroups.map((group) => (
+                    <div
+                      key={group.distance}
+                      style={{
+                        marginTop: 16,
+                        padding: 14,
+                        borderRadius: 18,
+                        background: "rgba(255,255,255,0.04)",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+                        <div>
+                          <strong>{group.distance}</strong>
+                          <p style={{ opacity: 0.7, marginTop: 4 }}>
+                            {formatDisplayDate(group.first.date)} → {formatDisplayDate(group.last.date)}
+                          </p>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <strong style={{ color: "#ffd400" }}>{group.first.chrono} → {group.last.chrono}</strong>
+                          {group.gainSeconds > 0 && group.progressPercent && (
+                            <p style={{ color: "#d6e83b", fontWeight: 900, marginTop: 4 }}>
+                              -{formatChronoFromSeconds(group.gainSeconds)} • +{group.progressPercent}%
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <svg viewBox="0 0 300 120" width="100%" height="120" style={{ marginTop: 12, overflow: "visible" }}>
+                        <line x1="12" y1="102" x2="288" y2="102" stroke="rgba(255,255,255,0.12)" strokeWidth="2" />
+                        <line x1="12" y1="18" x2="12" y2="102" stroke="rgba(255,255,255,0.12)" strokeWidth="2" />
+                        <polyline
+                          points={group.points}
+                          fill="none"
+                          stroke="#d6e83b"
+                          strokeWidth="5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        {group.sorted.map((item, index) => {
+                          const minSeconds = Math.min(...group.sorted.map((chrono) => chrono.seconds));
+                          const maxSeconds = Math.max(...group.sorted.map((chrono) => chrono.seconds));
+                          const range = Math.max(maxSeconds - minSeconds, 1);
+                          const x = group.sorted.length === 1 ? 12 : 12 + (index / (group.sorted.length - 1)) * 276;
+                          const y = 18 + ((item.seconds - minSeconds) / range) * 84;
+                          return <circle key={item.id} cx={x} cy={y} r="5" fill="#ffd400" />;
+                        })}
+                      </svg>
+
+                      <div
+                        style={{
+                          marginTop: 10,
+                          padding: 12,
+                          borderRadius: 14,
+                          background: "rgba(214,232,59,0.08)",
+                        }}
+                      >
+                        {group.gainSeconds > 0 && group.progressPercent ? (
+                          <p>
+                            🖤💛 Depuis ton arrivée à l’ASM, tu as gagné {formatChronoFromSeconds(group.gainSeconds)} sur {group.distance}. Super progression !
+                          </p>
+                        ) : (
+                          <p>
+                            👏 Tu construis ton historique. Les prochains chronos permettront de mieux voir ta progression.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="performance-card" style={{ marginTop: 16 }}>
               <h3>🏆 Mes records et ma progression</h3>
 
@@ -1914,10 +2186,16 @@ if (isPasswordRecovery) {
                             )}
 
                             <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
-                              <div>🔥 Ton travail commence vraiment à payer.</div>
-                              <div>🚀 Tes performances montrent un vrai cap franchi.</div>
-                              {chrono.elevationGain && <div>⛰️ En trail, le dénivelé compte : cette progression est encore plus parlante.</div>}
-                              <div>💪 Continue comme ça, tu es sur une très belle dynamique.</div>
+                              {chronoMotivationMessages({
+                                isPersonalRecord,
+                                isTheoreticalRecord,
+                                hasElevation: Boolean(chrono.elevationGain),
+                                chronosCount: personalChronos.length,
+                                progressPercent,
+                                vmaUpdated: Boolean(chrono.vmaUpdated),
+                              }).map((message) => (
+                                <div key={message}>{message}</div>
+                              ))}
                             </div>
                           </div>
                         ) : (
@@ -1952,14 +2230,20 @@ if (isPasswordRecovery) {
                                 <p style={{ marginTop: 8, color: "#ffd400", fontWeight: 800 }}>
                                   ⚡ VMA actuelle : {chrono.vmaAtEntry || profileVma} km/h • VMA estimée avec ce chrono : {displayedSuggestedVma} km/h
                                 </p>
-                                <button
-                                  type="button"
-                                  onClick={() => applySuggestedVmaFromChrono(displayedSuggestedVma)}
-                                  className="secondary-btn"
-                                  style={{ marginTop: 10 }}
-                                >
-                                  Mettre à jour ma VMA à {displayedSuggestedVma} km/h
-                                </button>
+                                {chrono.vmaUpdated ? (
+                                  <p style={{ marginTop: 10, color: "#d6e83b", fontWeight: 900 }}>
+                                    ✅ VMA mise à jour automatiquement dans ton profil.
+                                  </p>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => applySuggestedVmaFromChrono(displayedSuggestedVma)}
+                                    className="secondary-btn"
+                                    style={{ marginTop: 10 }}
+                                  >
+                                    Mettre à jour ma VMA à {displayedSuggestedVma} km/h
+                                  </button>
+                                )}
                               </>
                             ) : (
                               <p style={{ marginTop: 8, color: "#ffd400" }}>
