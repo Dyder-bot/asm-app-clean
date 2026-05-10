@@ -62,6 +62,8 @@ type MemberProfile = {
   approved?: boolean | null;
   active?: boolean | null;
   is_admin?: boolean | null;
+  privacy_accepted?: boolean | null;
+  privacy_accepted_at?: string | null;
 };
 
 
@@ -563,6 +565,51 @@ function calculateTargetsFromText(
   return uniqueGoals;
 }
 
+
+const PRIVACY_VERSION = "2026-05-10";
+
+const PRIVACY_TEXT = `Politique de confidentialité — Application ASM Course à Pied
+
+L’application ASM Course à Pied est destinée aux adhérents du club afin de consulter les séances, s’inscrire aux entraînements et faciliter l’organisation de la vie sportive du club.
+
+Les données collectées peuvent être : nom, prénom, adresse email, participation aux séances, statut de présence, chronos, VMA ou informations sportives utiles à la personnalisation des objectifs d’entraînement.
+
+Ces données sont utilisées uniquement pour le fonctionnement interne du club : gestion des séances, organisation des présences, suivi des entraînements et personnalisation des allures.
+
+Les données sont accessibles uniquement aux administrateurs autorisés du club et, si nécessaire, aux entraîneurs habilités.
+
+Les données sont hébergées par Supabase et l’application est déployée via Vercel.
+
+Aucune donnée n’est vendue, cédée ou utilisée à des fins commerciales.
+
+Chaque adhérent peut demander l’accès, la modification ou la suppression de ses données en contactant le club à l’adresse suivante : contact@asmpau-courseapied.org.
+
+Les données sont conservées pendant la durée d’adhésion au club, puis peuvent être supprimées sur demande ou après départ du club.
+
+L’ASM Course à Pied s’engage à protéger les données personnelles de ses adhérents et à limiter la collecte aux informations strictement utiles au fonctionnement de l’application.`;
+
+function PrivacyPolicyBlock() {
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        padding: 14,
+        borderRadius: 18,
+        background: "rgba(255,255,255,0.05)",
+        border: "1px solid rgba(214,232,59,0.22)",
+        textAlign: "left",
+        maxHeight: 280,
+        overflow: "auto",
+        whiteSpace: "pre-line",
+        fontSize: 13,
+        lineHeight: 1.45,
+      }}
+    >
+      {PRIVACY_TEXT}
+    </div>
+  );
+}
+
 export default function CalendarApp() {
   const [activeTab, setActiveTab] = useState<AppTab>("calendar");
   const [showMenu, setShowMenu] = useState(false);
@@ -583,6 +630,9 @@ export default function CalendarApp() {
   const [password, setPassword] = useState("");
   const [firstname, setFirstname] = useState("");
   const [lastname, setLastname] = useState("");
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
+  const [privacyAcceptedAt, setPrivacyAcceptedAt] = useState<string | null>(null);
+  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
 
   const [profileSexe, setProfileSexe] = useState("");
   const [profileVma, setProfileVma] = useState("");
@@ -591,6 +641,7 @@ export default function CalendarApp() {
   const [personalChronos, setPersonalChronos] = useState<PersonalChrono[]>([]);
   const [showChronoForm, setShowChronoForm] = useState(false);
   const [showChronoGraph, setShowChronoGraph] = useState(false);
+  const [selectedChronoId, setSelectedChronoId] = useState<string | null>(null);
   const [chronoDistance, setChronoDistance] = useState("10 km");
   const [chronoRace, setChronoRace] = useState("");
   const [chronoTime, setChronoTime] = useState("");
@@ -800,6 +851,7 @@ const [newPassword, setNewPassword] = useState("");
   function deletePersonalChrono(chronoId: string) {
     if (!window.confirm("Supprimer ce chrono ?")) return;
     setPersonalChronos((current) => current.filter((chrono) => chrono.id !== chronoId));
+    setSelectedChronoId((current) => (current === chronoId ? null : current));
   }
 
   async function applySuggestedVmaFromChrono(suggestedVma: string, chronoId?: string) {
@@ -974,6 +1026,15 @@ const [newPassword, setNewPassword] = useState("");
   setIsApproved(data.approved === true);
   setIsActive(data.active !== false);
 
+  const { data: privacyData } = await supabase
+    .from("profiles")
+    .select("privacy_accepted, privacy_accepted_at")
+    .eq("id", data.id)
+    .maybeSingle();
+
+  setPrivacyAccepted(privacyData?.privacy_accepted === true);
+  setPrivacyAcceptedAt(privacyData?.privacy_accepted_at || null);
+
   if (data.is_admin === true) {
     await fetchPendingProfiles();
     await fetchApprovedProfiles();
@@ -1124,6 +1185,8 @@ async function toggleAdminProfile(profileId: string, makeAdmin: boolean) {
 
     const pseudo = `${firstname} ${lastname.charAt(0).toUpperCase()}.`;
 
+    const privacyDate = privacyAcceptedAt || (privacyAccepted ? new Date().toISOString() : null);
+
     const { error } = await supabase
       .from("profiles")
       .update({
@@ -1134,13 +1197,33 @@ async function toggleAdminProfile(profileId: string, makeAdmin: boolean) {
         vma: profileVma ? Number(profileVma) : null,
         fc_max: profileFcMax ? Number(profileFcMax) : null,
         fc_rest: profileFcRest ? Number(profileFcRest) : null,
+        privacy_accepted: privacyAccepted,
+        privacy_accepted_at: privacyDate,
+        privacy_version: privacyAccepted ? PRIVACY_VERSION : null,
       })
       .eq("id", user.id);
 
     if (error) {
-      alert("Erreur sauvegarde profil : " + error.message);
-      return;
+      const { error: fallbackError } = await supabase
+        .from("profiles")
+        .update({
+          firstname,
+          lastname,
+          pseudo,
+          sexe: profileSexe,
+          vma: profileVma ? Number(profileVma) : null,
+          fc_max: profileFcMax ? Number(profileFcMax) : null,
+          fc_rest: profileFcRest ? Number(profileFcRest) : null,
+        })
+        .eq("id", user.id);
+
+      if (fallbackError) {
+        alert("Erreur sauvegarde profil : " + fallbackError.message);
+        return;
+      }
     }
+
+    setPrivacyAcceptedAt(privacyDate);
 
     alert("Profil enregistré");
   }
@@ -1255,6 +1338,11 @@ await supabase.auth.signOut();
       return;
     }
 
+    if (!privacyAccepted) {
+      alert("Merci d’accepter la politique de confidentialité pour créer un compte.");
+      return;
+    }
+
     const { data, error } = await supabase.auth.signUp({ email, password });
 
     if (error) {
@@ -1267,7 +1355,9 @@ await supabase.auth.signOut();
 
     const pseudo = `${firstname} ${lastname.charAt(0).toUpperCase()}.`;
 
-    await supabase.from("profiles").insert({
+    const acceptedAt = new Date().toISOString();
+
+    const { error: profileInsertError } = await supabase.from("profiles").insert({
       id: newUser.id,
       firstname,
       lastname,
@@ -1276,7 +1366,30 @@ await supabase.auth.signOut();
       is_admin: false,
       approved: false,
       active: true,
+      privacy_accepted: true,
+      privacy_accepted_at: acceptedAt,
+      privacy_version: PRIVACY_VERSION,
     });
+
+    if (profileInsertError) {
+      const { error: fallbackInsertError } = await supabase.from("profiles").insert({
+        id: newUser.id,
+        firstname,
+        lastname,
+        pseudo,
+        email,
+        is_admin: false,
+        approved: false,
+        active: true,
+      });
+
+      if (fallbackInsertError) {
+        alert("Erreur création du profil : " + fallbackInsertError.message);
+        return;
+      }
+    }
+
+    setPrivacyAcceptedAt(acceptedAt);
 
     setIsApproved(false);
     setIsActive(true);
@@ -1673,6 +1786,51 @@ if (isPasswordRecovery) {
           <input placeholder="Nom" value={lastname} onChange={(e) => setLastname(e.target.value)} />
           <input placeholder="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           <input type="password" placeholder="Mot de passe" value={password} onChange={(e) => setPassword(e.target.value)} />
+
+          <label
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 10,
+              marginTop: 10,
+              padding: 12,
+              borderRadius: 16,
+              background: "rgba(255,255,255,0.05)",
+              fontSize: 13,
+              textAlign: "left",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={privacyAccepted}
+              onChange={(e) => setPrivacyAccepted(e.target.checked)}
+              style={{ width: 18, height: 18, marginTop: 2 }}
+            />
+            <span>
+              J’accepte que mes données soient utilisées par l’ASM Course à Pied dans le cadre du fonctionnement de l’application du club.
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setShowPrivacyPolicy((value) => !value);
+                }}
+                style={{
+                  display: "block",
+                  marginTop: 6,
+                  padding: 0,
+                  border: 0,
+                  background: "transparent",
+                  color: "#d6e83b",
+                  fontWeight: 800,
+                  textDecoration: "underline",
+                }}
+              >
+                {showPrivacyPolicy ? "Masquer la politique de confidentialité" : "Lire la politique de confidentialité"}
+              </button>
+            </span>
+          </label>
+
+          {showPrivacyPolicy && <PrivacyPolicyBlock />}
 
           <button className="primary-btn" onClick={handleLogin}>Connexion</button>
           <button className="secondary-btn" onClick={handleForgotPassword}>Mot de passe oublié ?</button>
@@ -2195,173 +2353,197 @@ if (isPasswordRecovery) {
                     const isPersonalRecord = Boolean(chrono.previousChrono && gainSeconds > 0);
                     const isTheoreticalRecord = Boolean(displayedTheoreticalGainSeconds && displayedTheoreticalGainSeconds > 0);
                     const isRecord = isPersonalRecord || isTheoreticalRecord;
+                    const isSelected = selectedChronoId === chrono.id;
                     const bestForDistance = personalChronos
                       .filter((item) => item.distance === chrono.distance)
                       .map((item) => ({ ...item, seconds: parseChronoToSeconds(item.chrono) || Infinity }))
                       .sort((a, b) => a.seconds - b.seconds)[0];
 
                     return (
-                      <div
-                        key={chrono.id}
-                        style={{
-                          background: "#111",
-                          borderRadius: 18,
-                          padding: 16,
-                          marginTop: 14,
-                          border: isRecord
-                            ? "1px solid rgba(214,232,59,0.45)"
-                            : "1px solid rgba(255,255,255,0.08)",
-                        }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-                          <div>
-                            <strong style={{ fontSize: 18 }}>{chrono.distance}</strong>
-                            <p style={{ opacity: 0.7, marginTop: 4 }}>{chrono.race}</p>
-                            {chrono.elevationGain && (
-                              <p style={{ opacity: 0.78, marginTop: 4 }}>⛰️ D+ {chrono.elevationGain} m</p>
-                            )}
-                          </div>
-
-                          <div style={{ textAlign: "right" }}>
-                            <strong style={{ fontSize: 22, color: "#ffd400" }}>{chrono.chrono}</strong>
-                            <p style={{ opacity: 0.7 }}>{formatDisplayDate(chrono.date)}</p>
-                          </div>
-                        </div>
-
-                        {bestForDistance?.id === chrono.id && (
-                          <div style={{ marginTop: 12, color: "#d6e83b", fontWeight: 800 }}>
-                            🏅 Meilleur chrono enregistré sur {chrono.distance}
-                          </div>
-                        )}
-
-                        {isRecord ? (
-                          <div
-                            style={{
-                              marginTop: 16,
-                              padding: 14,
-                              borderRadius: 14,
-                              background: "rgba(255,212,0,0.08)",
-                            }}
-                          >
-                            <p style={{ fontWeight: 800 }}>🏆 Bravo ! Performance validée sur {chrono.distance} !</p>
-                            {isPersonalRecord && (
-                              <p style={{ marginTop: 6 }}>Tu as battu ton ancien record personnel enregistré.</p>
-                            )}
-                            {isTheoreticalRecord && (
-                              <p style={{ marginTop: 6, color: "#ffd400", fontWeight: 800 }}>
-                                🏆 Ton chrono est meilleur que ta performance théorique calculée avec ta VMA actuelle.
-                              </p>
-                            )}
-                            {chrono.elevationGain && (
-                              <p style={{ marginTop: 6, opacity: 0.82 }}>⛰️ Performance réalisée avec {chrono.elevationGain} m de D+.</p>
-                            )}
-                            {isPersonalRecord && (
-                              <>
-                                <p style={{ marginTop: 8 }}>Depuis ton ancienne référence ASM :</p>
-                                <p style={{ marginTop: 6 }}>{chrono.previousChrono} → {chrono.chrono}</p>
-                                <p style={{ marginTop: 6, color: "#ffd400", fontWeight: 800 }}>
-                                  📈 Gain : {formatChronoFromSeconds(gainSeconds)} • +{progressPercent}%
-                                </p>
-                              </>
-                            )}
-                            {isTheoreticalRecord && displayedTheoreticalChrono && displayedTheoreticalGainSeconds && (
-                              <>
-                                <p style={{ marginTop: 8 }}>Comparaison avec ta performance théorique :</p>
-                                <p style={{ marginTop: 6 }}>{displayedTheoreticalChrono} théorique → {chrono.chrono} réalisé</p>
-                                <p style={{ marginTop: 6, color: "#ffd400", fontWeight: 800 }}>
-                                  ⚡ Mieux que prévu de {formatChronoFromSeconds(displayedTheoreticalGainSeconds)}
-                                </p>
-                              </>
-                            )}
-
-                            <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
-                              {chronoMotivationMessages({
-                                isPersonalRecord,
-                                isTheoreticalRecord,
-                                hasElevation: Boolean(chrono.elevationGain),
-                                chronosCount: personalChronos.length,
-                                progressPercent,
-                                vmaUpdated: Boolean(chrono.vmaUpdated),
-                              }).map((message) => (
-                                <div key={message}>{message}</div>
-                              ))}
-                            </div>
-                          </div>
-                        ) : (
-                          <div
-                            style={{
-                              marginTop: 14,
-                              padding: 12,
-                              borderRadius: 12,
-                              background: "rgba(255,255,255,0.04)",
-                              opacity: 0.9,
-                            }}
-                          >
-                            👏 Résultat enregistré. Chaque chrono construit ton historique de progression.
-                          </div>
-                        )}
-
-                        {profileVma && isRecord && (
-                          <div
-                            style={{
-                              marginTop: 14,
-                              padding: 12,
-                              borderRadius: 12,
-                              background: "rgba(255,255,255,0.05)",
-                            }}
-                          >
-                            <p style={{ fontWeight: 800 }}>🧠 Analyse ASM</p>
-                            <p style={{ marginTop: 8 }}>
-                              Ce chrono donne un nouveau repère pour ajuster tes allures d’entraînement. Si tu valides cette estimation, ta VMA sera mise à jour dans ton profil.
-                            </p>
-                            {displayedSuggestedVma ? (
-                              <>
-                                <p style={{ marginTop: 8, color: "#ffd400", fontWeight: 800 }}>
-                                  ⚡ VMA actuelle : {chrono.vmaAtEntry || profileVma} km/h • VMA estimée avec ce chrono : {displayedSuggestedVma} km/h
-                                </p>
-                                {chrono.vmaUpdated ? (
-                                  <p style={{ marginTop: 10, color: "#d6e83b", fontWeight: 900 }}>
-                                    ✅ VMA mise à jour automatiquement dans ton profil.
-                                  </p>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => applySuggestedVmaFromChrono(displayedSuggestedVma, chrono.id)}
-                                    className="secondary-btn"
-                                    style={{ marginTop: 10 }}
-                                  >
-                                    ✅ Mettre ma VMA à jour à {displayedSuggestedVma} km/h
-                                  </button>
-                                )}
-                              </>
-                            ) : (
-                              <p style={{ marginTop: 8, color: "#ffd400" }}>
-                                ⚡ Pense à réévaluer ta VMA ou à en parler à un entraîneur pour garder des allures adaptées.
-                              </p>
-                            )}
-                          </div>
-                        )}
-
+                      <div key={chrono.id} style={{ marginTop: 12 }}>
                         <button
                           type="button"
-                          onClick={() => deletePersonalChrono(chrono.id)}
+                          onClick={() => setSelectedChronoId((current) => current === chrono.id ? null : chrono.id)}
                           style={{
-                            marginTop: 12,
-                            border: "1px solid rgba(255,80,80,0.25)",
-                            background: "rgba(255,80,80,0.08)",
-                            color: "rgba(255,255,255,0.78)",
-                            borderRadius: 12,
-                            padding: "10px 12px",
                             width: "100%",
-                            fontWeight: 800,
+                            textAlign: "left",
+                            background: "#111",
+                            borderRadius: 18,
+                            padding: 16,
+                            border: isSelected
+                              ? "1px solid rgba(214,232,59,0.7)"
+                              : isRecord
+                              ? "1px solid rgba(214,232,59,0.32)"
+                              : "1px solid rgba(255,255,255,0.08)",
+                            color: "white",
+                            cursor: "pointer",
                           }}
                         >
-                          🗑️ Supprimer ce chrono
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                            <div>
+                              <strong style={{ fontSize: 18 }}>{chrono.distance}</strong>
+                              <p style={{ opacity: 0.7, marginTop: 4 }}>{chrono.race}</p>
+                              {chrono.elevationGain && (
+                                <p style={{ opacity: 0.78, marginTop: 4 }}>⛰️ D+ {chrono.elevationGain} m</p>
+                              )}
+                              {bestForDistance?.id === chrono.id && (
+                                <p style={{ marginTop: 8, color: "#d6e83b", fontWeight: 800 }}>🏅 Meilleur chrono</p>
+                              )}
+                            </div>
+
+                            <div style={{ textAlign: "right" }}>
+                              <strong style={{ fontSize: 22, color: "#ffd400" }}>{chrono.chrono}</strong>
+                              <p style={{ opacity: 0.7 }}>{formatDisplayDate(chrono.date)}</p>
+                              <p style={{ marginTop: 8, color: "#d6e83b", fontWeight: 800, fontSize: 13 }}>
+                                {isSelected ? "Masquer" : "Voir le détail"}
+                              </p>
+                            </div>
+                          </div>
                         </button>
+
+                        {isSelected && (
+                          <div
+                            style={{
+                              background: "#111",
+                              borderRadius: 18,
+                              padding: 16,
+                              marginTop: 10,
+                              border: "1px solid rgba(214,232,59,0.28)",
+                            }}
+                          >
+                            {bestForDistance?.id === chrono.id && (
+                              <div style={{ marginBottom: 12, color: "#d6e83b", fontWeight: 800 }}>
+                                🏅 Meilleur chrono enregistré sur {chrono.distance}
+                              </div>
+                            )}
+
+                            {isRecord ? (
+                              <div
+                                style={{
+                                  padding: 14,
+                                  borderRadius: 14,
+                                  background: "rgba(255,212,0,0.08)",
+                                }}
+                              >
+                                <p style={{ fontWeight: 800 }}>🏆 Bravo ! Performance validée sur {chrono.distance} !</p>
+                                {isPersonalRecord && (
+                                  <p style={{ marginTop: 6 }}>Tu as battu ton ancien record personnel enregistré.</p>
+                                )}
+                                {isTheoreticalRecord && (
+                                  <p style={{ marginTop: 6, color: "#ffd400", fontWeight: 800 }}>
+                                    🏆 Ton chrono est meilleur que ta performance théorique calculée avec ta VMA actuelle.
+                                  </p>
+                                )}
+                                {chrono.elevationGain && (
+                                  <p style={{ marginTop: 6, opacity: 0.82 }}>⛰️ Performance réalisée avec {chrono.elevationGain} m de D+.</p>
+                                )}
+                                {isPersonalRecord && (
+                                  <>
+                                    <p style={{ marginTop: 8 }}>Depuis ton ancienne référence ASM :</p>
+                                    <p style={{ marginTop: 6 }}>{chrono.previousChrono} → {chrono.chrono}</p>
+                                    <p style={{ marginTop: 6, color: "#ffd400", fontWeight: 800 }}>
+                                      📈 Gain : {formatChronoFromSeconds(gainSeconds)} • +{progressPercent}%
+                                    </p>
+                                  </>
+                                )}
+                                {isTheoreticalRecord && displayedTheoreticalChrono && displayedTheoreticalGainSeconds && (
+                                  <>
+                                    <p style={{ marginTop: 8 }}>Comparaison avec ta performance théorique :</p>
+                                    <p style={{ marginTop: 6 }}>{displayedTheoreticalChrono} théorique → {chrono.chrono} réalisé</p>
+                                    <p style={{ marginTop: 6, color: "#ffd400", fontWeight: 800 }}>
+                                      ⚡ Mieux que prévu de {formatChronoFromSeconds(displayedTheoreticalGainSeconds)}
+                                    </p>
+                                  </>
+                                )}
+
+                                <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+                                  {chronoMotivationMessages({
+                                    isPersonalRecord,
+                                    isTheoreticalRecord,
+                                    hasElevation: Boolean(chrono.elevationGain),
+                                    chronosCount: personalChronos.length,
+                                    progressPercent,
+                                    vmaUpdated: Boolean(chrono.vmaUpdated),
+                                  }).map((message) => (
+                                    <div key={message}>{message}</div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : (
+                              <div
+                                style={{
+                                  padding: 12,
+                                  borderRadius: 12,
+                                  background: "rgba(255,255,255,0.04)",
+                                  opacity: 0.9,
+                                }}
+                              >
+                                👏 Résultat enregistré. Chaque chrono construit ton historique de progression.
+                              </div>
+                            )}
+
+                            {profileVma && isRecord && (
+                              <div
+                                style={{
+                                  marginTop: 14,
+                                  padding: 12,
+                                  borderRadius: 12,
+                                  background: "rgba(255,255,255,0.05)",
+                                }}
+                              >
+                                <p style={{ fontWeight: 800 }}>🧠 Analyse ASM</p>
+                                <p style={{ marginTop: 8 }}>
+                                  Ce chrono donne un nouveau repère pour ajuster tes allures d’entraînement. Si tu valides cette estimation, ta VMA sera mise à jour dans ton profil.
+                                </p>
+                                {displayedSuggestedVma ? (
+                                  <>
+                                    <p style={{ marginTop: 8, color: "#ffd400", fontWeight: 800 }}>
+                                      ⚡ VMA actuelle : {chrono.vmaAtEntry || profileVma} km/h • VMA estimée avec ce chrono : {displayedSuggestedVma} km/h
+                                    </p>
+                                    {chrono.vmaUpdated ? (
+                                      <p style={{ marginTop: 10, color: "#d6e83b", fontWeight: 900 }}>
+                                        ✅ VMA mise à jour dans ton profil.
+                                      </p>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => applySuggestedVmaFromChrono(displayedSuggestedVma, chrono.id)}
+                                        className="secondary-btn"
+                                        style={{ marginTop: 10 }}
+                                      >
+                                        ✅ Mettre ma VMA à jour à {displayedSuggestedVma} km/h
+                                      </button>
+                                    )}
+                                  </>
+                                ) : (
+                                  <p style={{ marginTop: 8, color: "#ffd400" }}>
+                                    ⚡ Pense à réévaluer ta VMA ou à en parler à un entraîneur pour garder des allures adaptées.
+                                  </p>
+                                )}
+                              </div>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => deletePersonalChrono(chrono.id)}
+                              style={{
+                                marginTop: 12,
+                                border: "1px solid rgba(255,80,80,0.25)",
+                                background: "rgba(255,80,80,0.08)",
+                                color: "rgba(255,255,255,0.78)",
+                                borderRadius: 12,
+                                padding: "10px 12px",
+                                width: "100%",
+                                fontWeight: 800,
+                              }}
+                            >
+                              🗑️ Supprimer ce chrono
+                            </button>
+                          </div>
+                        )}
                       </div>
                     );
-                  })
-              )}
+                  })              )}
             </div>
           </section>
         )}
@@ -2536,6 +2718,37 @@ if (isPasswordRecovery) {
                 >
                   Calculer la VMA
                 </button>
+              </div>
+
+              <div className="personal-goal-card">
+                <h3>Confidentialité</h3>
+                <p>
+                  Données utilisées uniquement pour le fonctionnement interne du club.
+                  {privacyAcceptedAt ? ` Accepté le ${new Date(privacyAcceptedAt).toLocaleDateString("fr-FR")}.` : ""}
+                </p>
+                <label
+                  style={{ display: "flex", alignItems: "flex-start", gap: 10, fontSize: 13 }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={privacyAccepted}
+                    onChange={(e) => {
+                      setPrivacyAccepted(e.target.checked);
+                      setPrivacyAcceptedAt(e.target.checked ? new Date().toISOString() : null);
+                    }}
+                    style={{ width: 18, height: 18, marginTop: 2 }}
+                  />
+                  <span>J’ai lu et j’accepte la politique de confidentialité de l’application ASM Course à Pied.</span>
+                </label>
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={() => setShowPrivacyPolicy((value) => !value)}
+                  style={{ marginTop: 12 }}
+                >
+                  {showPrivacyPolicy ? "Masquer la politique" : "Lire la politique de confidentialité"}
+                </button>
+                {showPrivacyPolicy && <PrivacyPolicyBlock />}
               </div>
 
               <button className="primary-btn" onClick={saveMyProfile}>Enregistrer le profil</button>
