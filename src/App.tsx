@@ -2031,38 +2031,6 @@ if (isPasswordRecovery) {
             <h2>Mes performances</h2>
 
             <div className="performance-card">
-              <h3>🏆 Performances théoriques</h3>
-              <p>Estimations basées sur ta VMA.</p>
-
-              <table className="performance-table">
-                <thead>
-                  <tr>
-                    <th>Distance</th>
-                    <th>% VMA</th>
-                    <th>Temps</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>10 km</td>
-                    <td>90%</td>
-                    <td>{profileVma ? formatDuration((10 / (Number(profileVma) * 0.9)) * 3600) : "-"}</td>
-                  </tr>
-                  <tr>
-                    <td>Semi</td>
-                    <td>85%</td>
-                    <td>{profileVma ? formatDuration((21.1 / (Number(profileVma) * 0.85)) * 3600) : "-"}</td>
-                  </tr>
-                  <tr>
-                    <td>Marathon</td>
-                    <td>80%</td>
-                    <td>{profileVma ? formatDuration((42.195 / (Number(profileVma) * 0.8)) * 3600) : "-"}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <div className="performance-card">
               <h3>⚡ Zones d’allure</h3>
 
               <table className="performance-table">
@@ -2132,6 +2100,39 @@ if (isPasswordRecovery) {
                 <p><strong>SV2 / seuil</strong> ≈ 85–90% VMA • 85–90% FC réserve</p>
               </div>
             </div>
+
+            <div className="performance-card">
+              <h3>🏆 Performances théoriques</h3>
+              <p>Repères de potentiel basés sur ta VMA, placés ici en complément des allures et zones cardio.</p>
+
+              <table className="performance-table">
+                <thead>
+                  <tr>
+                    <th>Distance</th>
+                    <th>% VMA</th>
+                    <th>Temps</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>10 km</td>
+                    <td>90%</td>
+                    <td>{profileVma ? formatDuration((10 / (Number(profileVma) * 0.9)) * 3600) : "-"}</td>
+                  </tr>
+                  <tr>
+                    <td>Semi</td>
+                    <td>85%</td>
+                    <td>{profileVma ? formatDuration((21.1 / (Number(profileVma) * 0.85)) * 3600) : "-"}</td>
+                  </tr>
+                  <tr>
+                    <td>Marathon</td>
+                    <td>80%</td>
+                    <td>{profileVma ? formatDuration((42.195 / (Number(profileVma) * 0.8)) * 3600) : "-"}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
           </section>
         )}
 
@@ -2250,6 +2251,12 @@ if (isPasswordRecovery) {
                 <p>
                   Visualise tes chronos dans le temps. Plus la courbe descend, plus tu vas vite.
                 </p>
+                <div style={{ marginTop: 12, padding: 14, borderRadius: 16, background: "rgba(214,232,59,0.08)", border: "1px solid rgba(214,232,59,0.18)" }}>
+                  <p style={{ fontWeight: 900 }}>🖤💛 Ton évolution ASM</p>
+                  <p style={{ marginTop: 6, opacity: 0.86 }}>
+                    Chaque chrono ajouté construit ton histoire au club. L’objectif est simple : voir concrètement le chemin parcouru depuis ton arrivée à l’ASM.
+                  </p>
+                </div>
 
                 {chronoEvolutionGroups.map((group) => (
                   <div
@@ -2345,11 +2352,11 @@ if (isPasswordRecovery) {
                     >
                       {group.gainSeconds > 0 && group.progressPercent ? (
                         <p>
-                          🖤💛 Depuis ton arrivée à l’ASM, tu as gagné {formatChronoFromSeconds(group.gainSeconds)} sur {group.distance}. Super progression !
+                          🖤💛 Depuis que tu es à l’ASM, tu as gagné {formatChronoFromSeconds(group.gainSeconds)} sur {group.distance}. Ce n’est pas donné à tout le monde : cette progression montre que ton travail paie vraiment. Continue, tu construis quelque chose de solide.
                         </p>
                       ) : (
                         <p>
-                          👏 Tu construis ton historique. Les prochains chronos permettront de mieux voir ta progression.
+                          👏 Premier repère posé. À partir de maintenant, chaque course va te permettre de mesurer ton évolution depuis ton arrivée à l’ASM.
                         </p>
                       )}
 
@@ -2985,7 +2992,16 @@ if (isPasswordRecovery) {
                           )}
 
                           {personalGoal.durationMin && (
-                            <p>Durée : {personalGoal.durationMin}'</p>
+                            <>
+                              <p>
+                                Séance : {personalGoal.repetitions ? `${personalGoal.repetitions} × ` : ""}
+                                {personalGoal.durationMin}'
+                                {personalGoal.type === "seuil" ? " au seuil" : ""}
+                              </p>
+                              {personalGoal.repetitions && personalGoal.repetitions > 1 && (
+                                <p>Répétitions : {personalGoal.repetitions} fractions de {personalGoal.durationMin}'</p>
+                              )}
+                            </>
                           )}
 
                           <p>
@@ -3027,8 +3043,7 @@ if (isPasswordRecovery) {
 
                               {personalGoal.timeSeconds && (
                                 <p>
-                                  Temps cible :{" "}
-                                  {formatDuration(personalGoal.timeSeconds)}
+                                  Temps cible : {formatDuration(personalGoal.timeSeconds)} par fraction
                                 </p>
                               )}
                             </>
