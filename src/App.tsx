@@ -23,7 +23,7 @@ const SESSION_TYPES = [
 
 const WEEK_DAYS = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
 
-type AppTab = "calendar" | "mySessions" | "profile" | "notifications" | "admin";
+type AppTab = "calendar" | "mySessions" | "chronos" | "profile" | "notifications" | "admin";
 type ParticipationStatus = "present" | "interested";
 type WorkoutMode = "" | "vma" | "fc" | "seuil" | "10km" | "allure";
 
@@ -62,6 +62,16 @@ type MemberProfile = {
   approved?: boolean | null;
   active?: boolean | null;
   is_admin?: boolean | null;
+};
+
+
+type PersonalChrono = {
+  id: string;
+  distance: string;
+  race: string;
+  chrono: string;
+  previousChrono?: string;
+  date: string;
 };
 
 type PersonalGoal =
@@ -395,6 +405,18 @@ export default function CalendarApp() {
   const [profileVma, setProfileVma] = useState("");
   const [profileFcMax, setProfileFcMax] = useState("");
   const [profileFcRest, setProfileFcRest] = useState("");
+  const [personalChronos, setPersonalChronos] = useState<PersonalChrono[]>([
+    {
+      id: "1",
+      distance: "10 km",
+      race: "Courir à Pau",
+      chrono: "42:00",
+      previousChrono: "47:00",
+      date: "2026-04-10",
+    },
+  ]);
+
+
   const [raceDistance, setRaceDistance] = useState("");
   const [raceTime, setRaceTime] = useState("");
 
@@ -1315,6 +1337,7 @@ if (isPasswordRecovery) {
         <nav className="side-nav">
           <button className={activeTab === "calendar" ? "active" : ""} onClick={() => { setActiveTab("calendar"); setShowMenu(false); }}>📅 Calendrier</button>
           <button className={activeTab === "mySessions" ? "active" : ""} onClick={() => { setActiveTab("mySessions"); setShowMenu(false); }}>👤 Mes performances</button>
+          <button className={activeTab === "chronos" ? "active" : ""} onClick={() => { setActiveTab("chronos"); setShowMenu(false); }}>🏆 Mes chronos</button>
           <button className={activeTab === "profile" ? "active" : ""} onClick={() => { setActiveTab("profile"); setShowMenu(false); }}>⚙️ Profil</button>
           <button className={activeTab === "notifications" ? "active" : ""} onClick={() => { setActiveTab("notifications"); setShowMenu(false); }}>🔔 Notifications</button>
 
@@ -1352,6 +1375,8 @@ if (isPasswordRecovery) {
                 ? "ASM Pau"
                 : activeTab === "mySessions"
                 ? "Mes performances"
+                : activeTab === "chronos"
+                ? "Mes chronos"
                 : activeTab === "profile"
                 ? "Profil"
                 : activeTab === "admin"
@@ -1472,6 +1497,7 @@ if (isPasswordRecovery) {
               </table>
             </div>
 
+
             <div className="performance-card">
               <h3>❤️ Zones cardiaques Karvonen</h3>
 
@@ -1513,6 +1539,126 @@ if (isPasswordRecovery) {
                 <p><strong>SV1</strong> ≈ 75–80% VMA • 70–78% FC réserve</p>
                 <p><strong>SV2 / seuil</strong> ≈ 85–90% VMA • 85–90% FC réserve</p>
               </div>
+            </div>
+          </section>
+        )}
+
+        {activeTab === "chronos" && (
+          <section className="performance-screen">
+            <h2>Mes chronos</h2>
+<div className="performance-card">
+              <h3>📊 Mes chronos</h3>
+              <p>Visualise ta progression et tes records personnels.</p>
+
+              {personalChronos.map((chrono) => {
+                const currentSeconds =
+                  Number(chrono.chrono.split(":")[0]) * 60 +
+                  Number(chrono.chrono.split(":")[1]);
+
+                const previousSeconds = chrono.previousChrono
+                  ? Number(chrono.previousChrono.split(":")[0]) * 60 +
+                    Number(chrono.previousChrono.split(":")[1])
+                  : null;
+
+                const gain = previousSeconds
+                  ? previousSeconds - currentSeconds
+                  : 0;
+
+                const progressPercent =
+                  previousSeconds && gain > 0
+                    ? ((gain / previousSeconds) * 100).toFixed(1)
+                    : null;
+
+                return (
+                  <div
+                    key={chrono.id}
+                    style={{
+                      background: "#111",
+                      borderRadius: 18,
+                      padding: 16,
+                      marginTop: 14,
+                      border: "1px solid rgba(255,255,255,0.08)",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div>
+                        <strong style={{ fontSize: 18 }}>{chrono.distance}</strong>
+                        <p style={{ opacity: 0.7, marginTop: 4 }}>{chrono.race}</p>
+                      </div>
+
+                      <div style={{ textAlign: "right" }}>
+                        <strong style={{ fontSize: 22, color: "#ffd400" }}>
+                          {chrono.chrono}
+                        </strong>
+                        <p style={{ opacity: 0.7 }}>{formatDisplayDate(chrono.date)}</p>
+                      </div>
+                    </div>
+
+                    {chrono.previousChrono && (
+                      <div
+                        style={{
+                          marginTop: 16,
+                          padding: 14,
+                          borderRadius: 14,
+                          background: "rgba(255,212,0,0.08)",
+                        }}
+                      >
+                        <p style={{ fontWeight: 700 }}>
+                          🏆 Bravo ! Tu progresses !
+                        </p>
+
+                        <p style={{ marginTop: 8 }}>
+                          Depuis ton arrivée à l’ASM :
+                        </p>
+
+                        <p style={{ marginTop: 6 }}>
+                          {chrono.previousChrono} → {chrono.chrono}
+                        </p>
+
+                        <p style={{ marginTop: 6, color: "#ffd400", fontWeight: 700 }}>
+                          📈 Gain : {Math.floor(gain / 60)}’{pad(gain % 60)} • +{progressPercent}%
+                        </p>
+
+                        <div
+                          style={{
+                            marginTop: 14,
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 8,
+                          }}
+                        >
+                          <div>🔥 Ton travail commence vraiment à payer.</div>
+                          <div>🚀 Tes performances montrent un vrai cap franchi.</div>
+                          <div>💪 Continue comme ça, tu es sur une très belle dynamique.</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {profileVma && (
+                      <div
+                        style={{
+                          marginTop: 14,
+                          padding: 12,
+                          borderRadius: 12,
+                          background: "rgba(255,255,255,0.05)",
+                        }}
+                      >
+                        <p style={{ fontWeight: 700 }}>
+                          🧠 Analyse ASM
+                        </p>
+
+                        <p style={{ marginTop: 8 }}>
+                          Tes dernières performances semblent supérieures aux estimations de ta VMA actuelle.
+                        </p>
+
+                        <p style={{ marginTop: 8, color: "#ffd400" }}>
+                          ⚡ Pense à réévaluer ta VMA afin d’ajuster encore plus précisément tes allures d’entraînement.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </section>
         )}
