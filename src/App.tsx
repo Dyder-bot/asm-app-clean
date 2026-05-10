@@ -1559,7 +1559,13 @@ if (isPasswordRecovery) {
               </div>
             )}
 
-            <h2 className="admin-section-title">Membres admis</h2>
+           <h2 className="admin-section-title">
+  Membres admis
+</h2>
+
+<p className="empty-message">
+  Admins : {approvedProfiles.filter((profile) => profile.is_admin).length}
+</p>
 
             {approvedProfiles.length === 0 ? (
               <p className="empty-message">Aucun membre admis</p>
