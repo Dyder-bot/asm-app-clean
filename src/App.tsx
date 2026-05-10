@@ -468,11 +468,22 @@ const [newPassword, setNewPassword] = useState("");
     : [];
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      setUser(data.user);
-      if (!data.user) setProfileLoaded(true);
-    });
-  }, []);
+  supabase.auth.getUser().then(({ data }) => {
+    setUser(data.user);
+    if (!data.user) setProfileLoaded(true);
+  });
+
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange((_event, session) => {
+    setUser(session?.user ?? null);
+    if (!session?.user) setProfileLoaded(true);
+  });
+
+  return () => {
+    subscription.unsubscribe();
+  };
+}, []);
 
   useEffect(() => {
     if (!user) return;
