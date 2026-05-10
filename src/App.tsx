@@ -713,6 +713,24 @@ export default function CalendarApp() {
     setParticipants(enriched as Participant[]);
   }
 
+  async function handleForgotPassword() {
+    if (!email) {
+      alert("Renseigne d'abord ton adresse email.");
+      return;
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin,
+    });
+
+    if (error) {
+      alert("Erreur : " + error.message);
+      return;
+    }
+
+    alert("Un email de réinitialisation vient d'être envoyé.");
+  }
+
   async function handleLogin() {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
@@ -1130,6 +1148,7 @@ export default function CalendarApp() {
           <input type="password" placeholder="Mot de passe" value={password} onChange={(e) => setPassword(e.target.value)} />
 
           <button className="primary-btn" onClick={handleLogin}>Connexion</button>
+          <button className="secondary-btn" onClick={handleForgotPassword}>Mot de passe oublié ?</button>
           <button className="secondary-btn" onClick={handleSignup}>Créer un compte</button>
         </div>
       </div>
@@ -1758,14 +1777,14 @@ export default function CalendarApp() {
                       )}
 
                       {personalGoals.length > 1 && (
-                       <button
-  className={
-    selectedGoalIndex === goalIndex
-      ? "goal-selected-btn"
-      : "goal-unselected-btn"
-  }
-  onClick={() => setSelectedGoalIndex(goalIndex)}
->
+                        <button
+                          className={
+                            selectedGoalIndex === goalIndex
+                              ? "goal-selected-btn"
+                              : "goal-unselected-btn"
+                          }
+                          onClick={() => setSelectedGoalIndex(goalIndex)}
+                        >
                           {selectedGoalIndex === goalIndex
                             ? "Objectif sélectionné"
                             : "Choisir cet objectif"}
