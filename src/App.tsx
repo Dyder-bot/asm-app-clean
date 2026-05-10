@@ -72,6 +72,7 @@ type PersonalChrono = {
   chrono: string;
   previousChrono?: string;
   date: string;
+  elevationGain?: string;
 };
 
 type PersonalGoal =
@@ -459,6 +460,7 @@ export default function CalendarApp() {
   const [chronoRace, setChronoRace] = useState("");
   const [chronoTime, setChronoTime] = useState("");
   const [chronoDate, setChronoDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [chronoElevationGain, setChronoElevationGain] = useState("");
 
   const [raceDistance, setRaceDistance] = useState("");
   const [raceTime, setRaceTime] = useState("");
@@ -525,12 +527,14 @@ const [newPassword, setNewPassword] = useState("");
       chrono: formatChronoFromSeconds(currentSeconds),
       previousChrono,
       date: chronoDate,
+      elevationGain: chronoDistance.toLowerCase().includes("trail") ? chronoElevationGain.trim() : undefined,
     };
 
     setPersonalChronos((current) => [newChrono, ...current]);
     setChronoRace("");
     setChronoTime("");
     setChronoDate(new Date().toISOString().slice(0, 10));
+    setChronoElevationGain("");
     setShowChronoForm(false);
   }
 
@@ -1704,6 +1708,24 @@ if (isPasswordRecovery) {
                   />
                 </label>
 
+
+
+                {chronoDistance.toLowerCase().includes("trail") && (
+                  <label>
+                    Dénivelé positif
+                    <input
+                      type="number"
+                      min="0"
+                      value={chronoElevationGain}
+                      onChange={(event) => setChronoElevationGain(event.target.value)}
+                      placeholder="Ex : 850"
+                    />
+                    <span style={{ opacity: 0.65, fontSize: 13, marginTop: 6, display: "block" }}>
+                      En mètres de D+ — important pour comparer correctement les courses trail.
+                    </span>
+                  </label>
+                )}
+
                 <label>
                   Date
                   <input
@@ -1766,6 +1788,9 @@ if (isPasswordRecovery) {
                           <div>
                             <strong style={{ fontSize: 18 }}>{chrono.distance}</strong>
                             <p style={{ opacity: 0.7, marginTop: 4 }}>{chrono.race}</p>
+                            {chrono.elevationGain && (
+                              <p style={{ opacity: 0.78, marginTop: 4 }}>⛰️ D+ {chrono.elevationGain} m</p>
+                            )}
                           </div>
 
                           <div style={{ textAlign: "right" }}>
@@ -1790,6 +1815,9 @@ if (isPasswordRecovery) {
                             }}
                           >
                             <p style={{ fontWeight: 800 }}>🏆 Bravo ! Tu as battu ton record sur {chrono.distance} !</p>
+                            {chrono.elevationGain && (
+                              <p style={{ marginTop: 6, opacity: 0.82 }}>⛰️ Performance réalisée avec {chrono.elevationGain} m de D+.</p>
+                            )}
                             <p style={{ marginTop: 8 }}>Depuis ton ancienne référence ASM :</p>
                             <p style={{ marginTop: 6 }}>{chrono.previousChrono} → {chrono.chrono}</p>
                             <p style={{ marginTop: 6, color: "#ffd400", fontWeight: 800 }}>
@@ -1799,6 +1827,7 @@ if (isPasswordRecovery) {
                             <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
                               <div>🔥 Ton travail commence vraiment à payer.</div>
                               <div>🚀 Tes performances montrent un vrai cap franchi.</div>
+                              {chrono.elevationGain && <div>⛰️ En trail, le dénivelé compte : cette progression est encore plus parlante.</div>}
                               <div>💪 Continue comme ça, tu es sur une très belle dynamique.</div>
                             </div>
                           </div>
