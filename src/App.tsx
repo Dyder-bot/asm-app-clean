@@ -562,6 +562,21 @@ function calculateTargetsFromText(
     return goals.findIndex((item) => JSON.stringify(item) === key) === index;
   });
 
+  // Si une ligne détaillée a été reconnue comme séance de seuil en côte/trail
+  // (ex : « 6 x 5' au seuil en côtes »), on garde uniquement cet objectif complet.
+  // Cela évite d'afficher un deuxième objectif générique issu du titre
+  // « Seuil en côtes » alors que c'est bien une seule et même séance.
+  const detailedHillThresholdGoal = uniqueGoals.find(
+    (goal) =>
+      goal.type === "seuil" &&
+      goal.surface === "trail" &&
+      Boolean(goal.durationMin || goal.timeSeconds)
+  );
+
+  if (detailedHillThresholdGoal) {
+    return [detailedHillThresholdGoal];
+  }
+
   return uniqueGoals;
 }
 
@@ -2884,7 +2899,7 @@ if (isPasswordRecovery) {
                         selectedGoalIndex === goalIndex ? "selected-goal" : ""
                       }`}
                     >
-                      <h3>🎯 Objectif {goalIndex + 1}</h3>
+                      <h3>🎯 {personalGoals.length === 1 ? "Objectif personnalisé" : `Objectif ${goalIndex + 1}`}</h3>
 
                       {personalGoal.type === "vma" && (
                         <>
