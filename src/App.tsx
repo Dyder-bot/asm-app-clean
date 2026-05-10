@@ -1758,12 +1758,14 @@ export default function CalendarApp() {
                       )}
 
                       {personalGoals.length > 1 && (
-                        <button
-                          className={`secondary-btn small-btn ${
-                            selectedGoalIndex === goalIndex ? "active-choice" : ""
-                          }`}
-                          onClick={() => setSelectedGoalIndex(goalIndex)}
-                        >
+                       <button
+  className={
+    selectedGoalIndex === goalIndex
+      ? "goal-selected-btn"
+      : "goal-unselected-btn"
+  }
+  onClick={() => setSelectedGoalIndex(goalIndex)}
+>
                           {selectedGoalIndex === goalIndex
                             ? "Objectif sélectionné"
                             : "Choisir cet objectif"}
