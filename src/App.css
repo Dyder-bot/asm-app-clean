@@ -1154,5 +1154,27 @@ input:disabled {
 .admin-section-title {
   margin-top: 32px;
 }
+  .goal-selected-btn {
+  width: 100%;
+  padding: 14px;
+  border-radius: 18px;
+  background: #d4e157;
+  color: #111;
+  border: 2px solid #d4e157;
+  font-weight: 700;
+  font-size: 16px;
+  box-shadow: 0 0 18px rgba(212, 225, 87, 0.35);
+}
+
+.goal-unselected-btn {
+  width: 100%;
+  padding: 14px;
+  border-radius: 18px;
+  background: transparent;
+  color: #d4e157;
+  border: 2px solid rgba(212, 225, 87, 0.4);
+  font-weight: 700;
+  font-size: 16px;
+}
 }
 }
