@@ -12,7 +12,6 @@ const supabase = createClient(
 
 const ADMIN_EMAILS = [
   "foucatdidier@gmail.com",
-  "asmpau.cap@gmail.com",
 ];
 
 
@@ -1021,7 +1020,8 @@ const [newPassword, setNewPassword] = useState("");
 
   setProfileLoaded(false);
 
-  const userEmail = user.email || "";
+  const userEmail = (user.email || "").trim().toLowerCase();
+  const isBootstrapAdmin = ADMIN_EMAILS.includes(userEmail);
 
   let { data, error } = await supabase
     .from("profiles")
@@ -1029,6 +1029,8 @@ const [newPassword, setNewPassword] = useState("");
     .eq("id", user.id)
     .maybeSingle();
 
+  // Sécurité : certains anciens comptes peuvent avoir été créés avec l'email
+  // mais pas avec le bon id Supabase. On tente donc aussi une recherche email.
   if (!data && userEmail) {
     const result = await supabase
       .from("profiles")
@@ -1040,36 +1042,84 @@ const [newPassword, setNewPassword] = useState("");
     error = result.error;
   }
 
-  if (!data && ADMIN_EMAILS.includes(userEmail.toLowerCase())) {
-    const { data: insertedProfile, error: insertError } = await supabase
-      .from("profiles")
-      .upsert({
-        id: user.id,
-        firstname: "Didier",
-        lastname: "Foucat",
-        pseudo: "Didier F.",
-        email: userEmail,
-        approved: true,
-        active: true,
-        is_admin: true,
-      })
-      .select("id, firstname, lastname, pseudo, sexe, vma, fc_max, fc_rest, is_admin, approved, active, email")
-      .single();
+  // Point important : si aucun profil n'existe, on ne bloque plus l'utilisateur
+  // sur "Profil introuvable". On crée automatiquement une demande en attente,
+  // visible ensuite dans l'espace admin.
+  if (!data) {
+    const meta = (user.user_metadata || {}) as Record<string, string>;
+    const fallbackFirstname = meta.firstname || meta.first_name || userEmail.split("@")[0] || "";
+    const fallbackLastname = meta.lastname || meta.last_name || "";
+    const fallbackPseudo = fallbackLastname
+      ? `${fallbackFirstname} ${fallbackLastname.charAt(0).toUpperCase()}.`
+      : fallbackFirstname;
 
-    data = insertedProfile;
-    error = insertError;
+    const { data: createdProfile, error: createProfileError } = await supabase
+      .from("profiles")
+      .upsert(
+        {
+          id: user.id,
+          firstname: fallbackFirstname,
+          lastname: fallbackLastname,
+          pseudo: fallbackPseudo,
+          email: userEmail,
+          is_admin: isBootstrapAdmin,
+          approved: isBootstrapAdmin ? true : false,
+          active: true,
+        },
+        { onConflict: "id" }
+      )
+      .select("id, firstname, lastname, pseudo, sexe, vma, fc_max, fc_rest, is_admin, approved, active, email")
+      .maybeSingle();
+
+    if (createProfileError || !createdProfile) {
+      alert("Ton compte existe, mais la demande d'accès n'a pas pu être créée : " + (createProfileError?.message || "aucune donnée"));
+      setIsAdmin(false);
+      setIsApproved(false);
+      setIsActive(true);
+      setProfileLoaded(true);
+      return;
+    }
+
+    data = createdProfile;
+    error = null;
   }
 
   if (error || !data) {
-    alert("Profil introuvable pour : " + userEmail + " / " + (error?.message || "aucune donnée"));
+    alert("Erreur chargement profil : " + (error?.message || "aucune donnée"));
     setIsAdmin(false);
     setIsApproved(false);
-    setIsActive(false);
+    setIsActive(true);
     setProfileLoaded(true);
     return;
   }
 
-  if (ADMIN_EMAILS.includes(userEmail.toLowerCase()) && (data.is_admin !== true || data.approved !== true || data.active === false)) {
+  // Si le compte retrouvé par email n'a pas le bon id, on crée aussi une ligne
+  // propre pour l'id Auth courant. Cela évite les comptes invisibles côté admin.
+  if (data.id !== user.id) {
+    const { data: fixedProfile, error: fixProfileError } = await supabase
+      .from("profiles")
+      .upsert(
+        {
+          id: user.id,
+          firstname: data.firstname || userEmail.split("@")[0] || "",
+          lastname: data.lastname || "",
+          pseudo: data.pseudo || data.firstname || userEmail.split("@")[0] || "",
+          email: userEmail,
+          is_admin: isBootstrapAdmin ? true : false,
+          approved: isBootstrapAdmin ? true : false,
+          active: true,
+        },
+        { onConflict: "id" }
+      )
+      .select("id, firstname, lastname, pseudo, sexe, vma, fc_max, fc_rest, is_admin, approved, active, email")
+      .maybeSingle();
+
+    if (!fixProfileError && fixedProfile) {
+      data = fixedProfile;
+    }
+  }
+
+  if (isBootstrapAdmin && (data.is_admin !== true || data.approved !== true || data.active === false)) {
     const { data: updatedAdminProfile, error: updateAdminError } = await supabase
       .from("profiles")
       .update({
@@ -1422,6 +1472,13 @@ await supabase.auth.signOut();
     const { data, error } = await supabase.auth.signUp({
       email: cleanEmail,
       password,
+      options: {
+        data: {
+          firstname,
+          lastname,
+          pseudo: `${firstname} ${lastname.charAt(0).toUpperCase()}.`,
+        },
+      },
     });
 
     if (error) {
