@@ -664,6 +664,7 @@ export default function CalendarApp() {
 
   const [user, setUser] = useState<any>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
+  const [signupPending, setSignupPending] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isApproved, setIsApproved] = useState(false);
   const [isActive, setIsActive] = useState(true);
@@ -1343,6 +1344,7 @@ async function toggleAdminProfile(profileId: string, makeAdmin: boolean) {
   }
 
   async function handleLogin() {
+    setSignupPending(false);
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
@@ -1438,10 +1440,17 @@ await supabase.auth.signOut();
 
     setPrivacyAcceptedAt(acceptedAt);
 
+    setFirstname("");
+    setLastname("");
+    setPassword("");
+    setPrivacyAccepted(false);
+    setSignupPending(true);
+    setUser(null);
+    setIsAdmin(false);
     setIsApproved(false);
     setIsActive(true);
     setProfileLoaded(true);
-    setUser(newUser);
+    await supabase.auth.signOut();
   }
 
   async function handleLogout() {
@@ -1451,6 +1460,7 @@ await supabase.auth.signOut();
     setShowMenu(false);
     setIsApproved(false);
     setIsActive(true);
+    setSignupPending(false);
     setProfileLoaded(true);
   }
 
@@ -1821,6 +1831,29 @@ if (isPasswordRecovery) {
     </div>
   );
 }
+  if (signupPending) {
+    return (
+      <div className="app-screen auth-screen">
+        <div className="auth-card">
+          <img src="/logo-asm.png" alt="ASM Pau" className="auth-logo" />
+          <h1>Compte en attente</h1>
+          <p>
+            Ton inscription a bien été enregistrée.
+            <br />
+            Un administrateur du club doit maintenant valider ton accès.
+          </p>
+          <p style={{ opacity: 0.75, fontSize: 14 }}>
+            Tu n’as rien d’autre à faire pour le moment. Une fois ton compte validé, tu pourras te connecter avec ton email et ton mot de passe.
+          </p>
+
+          <button className="secondary-btn" onClick={() => setSignupPending(false)}>
+            Retour à la connexion
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!user) {
     return (
       <div className="app-screen auth-screen">
