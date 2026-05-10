@@ -320,6 +320,7 @@ export default function CalendarApp() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+  const [editingSession, setEditingSession] = useState<Session | null>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
 
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -696,6 +697,7 @@ export default function CalendarApp() {
     setImageFile(null);
     setGpxFile(null);
     setIsEditing(false);
+    setEditingSession(null);
   }
 
   function openCreateForm() {
@@ -713,6 +715,8 @@ export default function CalendarApp() {
   function openEditForm() {
     if (!selectedSession) return;
 
+    setEditingSession(selectedSession);
+
     setFormTitle(selectedSession.title || "");
     setFormType(selectedSession.type || "Trail");
     setFormStartTime(selectedSession.start_time || "18:30");
@@ -724,9 +728,11 @@ export default function CalendarApp() {
     setFormIntensityPercent(selectedSession.intensity_percent ? String(selectedSession.intensity_percent) : "");
     setImageFile(null);
     setGpxFile(null);
+
     setIsEditing(true);
     setShowCreateForm(true);
     setShowAdminActions(false);
+    setSelectedSession(null);
   }
 
   async function uploadFile(file: File, bucketName: string) {
@@ -743,7 +749,7 @@ export default function CalendarApp() {
   }
 
   async function handleSaveSession() {
-    if (!selectedDate && !selectedSession?.date) {
+    if (!selectedDate && !editingSession?.date) {
       alert("Choisis d'abord une date.");
       return;
     }
@@ -755,16 +761,16 @@ export default function CalendarApp() {
 
     const imageUrl = imageFile
       ? await uploadFile(imageFile, "images")
-      : selectedSession?.image_url || null;
+      : editingSession?.image_url || null;
 
     const gpxUrl = gpxFile
       ? await uploadFile(gpxFile, "gpx")
-      : selectedSession?.gpx_url || null;
+      : editingSession?.gpx_url || null;
 
     const payload = {
       title: formTitle.trim().charAt(0).toUpperCase() + formTitle.trim().slice(1),
       type: formType,
-      date: selectedSession?.date || selectedDate,
+      date: editingSession?.date || selectedDate,
       start_time: formStartTime,
       end_time: formEndTime,
       location: formLocation.trim(),
@@ -777,11 +783,11 @@ export default function CalendarApp() {
       intensity_percent: formIntensityPercent ? Number(formIntensityPercent) : null,
     };
 
-    if (isEditing && selectedSession) {
+    if (isEditing && editingSession) {
       const { data, error } = await supabase
         .from("sessions")
         .update(payload)
-        .eq("id", selectedSession.id)
+        .eq("id", editingSession.id)
         .select();
 
       if (error) {
@@ -805,6 +811,7 @@ export default function CalendarApp() {
       if (data?.[0]) setSessions((current) => [...current, data[0] as Session]);
     }
 
+    setEditingSession(null);
     resetForm();
     setShowCreateForm(false);
   }
