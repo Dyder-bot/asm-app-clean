@@ -398,10 +398,55 @@ function calculateTargetFromText(
   const vmaMatch = text.match(/(\d+)\s*[x×]\s*(\d+)\s*(m|km)?\s*.*?(\d+)\s*%\s*(de\s*)?vma/);
   const fcMatch = text.match(/(\d+)\s*%\s*(de\s*)?(fc\s*max|fc|max)/);
   const seuilMatch = text.match(/(\d+)\s*[x×]\s*(\d+)'?\s*(au\s*)?seuil/);
+  const seuilHillMatch = text.match(/(\d+)\s*[x×]\s*(\d+)\s*['’]?\s*(?:au\s*)?seuil.*?(côte|cote|montée|montee)/);
+  const svHillMatch = text.match(/(\d+)\s*[x×]\s*\(?\s*(\d+)\s*['’]\s*sv2\s*\+\s*(\d+)\s*['’]\s*sv1\s*\)?/);
+  const efMatch = text.match(/(^|\s|-)ef(\s|$)|endurance\s+fondamentale|footing/);
   const km10Match = text.match(/(\d+)\s*[x×]\s*(\d+)\s*(m|km)?\s*.*?(allure\s*)?(10\s?km)/);
   const allureMatch = text.match(/allure\s*(\d+)'(\d{1,2})"?/);
   const seuilIntervalMatch = text.match(/(\d+)\s*[x×]\s*((?:\d+\s*['’]\s*)?\d+)\s*["”]?\s*\/\s*((?:\d+\s*['’]\s*)?\d+)\s*["”]?\s*.*?seuil/);
   const vmaTimeIntervalMatch = text.match(/(\d+)\s*[x×]\s*((?:\d+\s*['’]\s*)?\d+)\s*(?:["”]|sec|s|secondes?)?\s*\/\s*((?:\d+\s*['’]\s*)?\d+)\s*(?:["”]|sec|s|secondes?)?\s*.*?(vma|vite)/);
+
+  if (efMatch) {
+    return {
+      type: "effort",
+      title: isTrailSession ? "Endurance fondamentale trail" : "Endurance fondamentale",
+      detail: isTrailSession
+        ? "Footing trail en aisance respiratoire : effort facile, régulier, sans chercher l’allure route."
+        : "Footing en endurance fondamentale : effort facile, tu dois pouvoir parler en courant.",
+      fcLabel: isTrailSession ? "Repère : environ 65–75% FC max, à adapter au terrain." : "Repère : environ 65–75% FC max / zone SV1 basse.",
+      surface: isTrailSession ? "trail" : "route",
+    };
+  }
+
+  if (svHillMatch) {
+    const repetitions = Number(svHillMatch[1]);
+    const sv2Minutes = Number(svHillMatch[2]);
+    const sv1Minutes = Number(svHillMatch[3]);
+
+    return {
+      type: "effort",
+      title: `${repetitions} × (${sv2Minutes}' SV2 + ${sv1Minutes}' SV1) en côte`,
+      detail: "Alternance en côte : 4 minutes proches SV2 puis 2 minutes proches SV1. L’objectif est de rester maîtrisé, sans exploser sur les fractions SV2.",
+      fcLabel: "Repères : SV2 ≈ 85–90% FC max / SV1 ≈ 75–80% FC max. Adapter l’effort à la pente et au terrain.",
+      surface: "trail",
+    };
+  }
+
+  if (seuilHillMatch) {
+    const repetitions = Number(seuilHillMatch[1]);
+    const durationMin = Number(seuilHillMatch[2]);
+    const hasActiveDownhill = text.includes("descente active") || text.includes("recup active") || text.includes("récup active");
+
+    return {
+      type: "effort",
+      title: `${repetitions} × ${durationMin}' au seuil en côte`,
+      detail: hasActiveDownhill
+        ? "Travail au seuil en côte avec descente active : monter à effort contrôlé, puis redescendre en récupération active sans se mettre dans le rouge."
+        : "Travail au seuil en côte/trail : garder un effort contrôlé, sans chercher l’allure route.",
+      fcLabel: "Repère : environ 85–90% FC max, proche SV2. La pente prime sur l’allure.",
+      surface: "trail",
+    };
+  }
 
   if (vmaTimeIntervalMatch && vma > 0) {
     const repetitions = Number(vmaTimeIntervalMatch[1]);
@@ -515,8 +560,10 @@ function calculateTargetsFromText(
   const rawText = `${session.title || ""}\n${session.description || ""}`;
   const lines = rawText
     .split(/\n+/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+    .map((line) => line.trim().replace(/^[-•]+\s*/, ""))
+    .filter((line) => line.length > 0)
+    .filter((line) => !/^plusieurs\s+options?\s*:?$/i.test(line))
+    .filter((line) => !/^rdv\b/i.test(line));
 
   const goals: PersonalGoal[] = [];
 
@@ -561,21 +608,6 @@ function calculateTargetsFromText(
     const key = JSON.stringify(goal);
     return goals.findIndex((item) => JSON.stringify(item) === key) === index;
   });
-
-  // Si une ligne détaillée a été reconnue comme séance de seuil en côte/trail
-  // (ex : « 6 x 5' au seuil en côtes »), on garde uniquement cet objectif complet.
-  // Cela évite d'afficher un deuxième objectif générique issu du titre
-  // « Seuil en côtes » alors que c'est bien une seule et même séance.
-  const detailedHillThresholdGoal = uniqueGoals.find(
-    (goal) =>
-      goal.type === "seuil" &&
-      goal.surface === "trail" &&
-      Boolean(goal.durationMin || goal.timeSeconds)
-  );
-
-  if (detailedHillThresholdGoal) {
-    return [detailedHillThresholdGoal];
-  }
 
   return uniqueGoals;
 }
@@ -2899,7 +2931,7 @@ if (isPasswordRecovery) {
                         selectedGoalIndex === goalIndex ? "selected-goal" : ""
                       }`}
                     >
-                      <h3>🎯 {personalGoals.length === 1 ? "Objectif personnalisé" : `Objectif ${goalIndex + 1}`}</h3>
+                      <h3>🎯 Objectif {goalIndex + 1}</h3>
 
                       {personalGoal.type === "vma" && (
                         <>
