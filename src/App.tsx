@@ -10,6 +10,12 @@ const supabase = createClient(
   "sb_publishable_dUWNjDBBxD083DUc8UdRyQ_J5AzxtGM"
 );
 
+const ADMIN_EMAILS = [
+  "foucatdidier@gmail.com",
+  "asmpau.cap@gmail.com",
+];
+
+
 const SESSION_TYPES = [
   "Trail",
   "Course à pied",
@@ -664,7 +670,6 @@ export default function CalendarApp() {
 
   const [user, setUser] = useState<any>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
-  const [signupPending, setSignupPending] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isApproved, setIsApproved] = useState(false);
   const [isActive, setIsActive] = useState(true);
@@ -1035,7 +1040,7 @@ const [newPassword, setNewPassword] = useState("");
     error = result.error;
   }
 
-  if (!data && userEmail.toLowerCase() === "foucatdidier@gmail.com") {
+  if (!data && ADMIN_EMAILS.includes(userEmail.toLowerCase())) {
     const { data: insertedProfile, error: insertError } = await supabase
       .from("profiles")
       .upsert({
@@ -1062,6 +1067,24 @@ const [newPassword, setNewPassword] = useState("");
     setIsActive(false);
     setProfileLoaded(true);
     return;
+  }
+
+  if (ADMIN_EMAILS.includes(userEmail.toLowerCase()) && (data.is_admin !== true || data.approved !== true || data.active === false)) {
+    const { data: updatedAdminProfile, error: updateAdminError } = await supabase
+      .from("profiles")
+      .update({
+        email: userEmail,
+        approved: true,
+        active: true,
+        is_admin: true,
+      })
+      .eq("id", data.id)
+      .select("id, firstname, lastname, pseudo, sexe, vma, fc_max, fc_rest, is_admin, approved, active, email")
+      .maybeSingle();
+
+    if (!updateAdminError && updatedAdminProfile) {
+      data = updatedAdminProfile;
+    }
   }
 
   setFirstname(data.firstname || "");
@@ -1094,9 +1117,12 @@ const [newPassword, setNewPassword] = useState("");
     const { data, error } = await supabase
       .from("profiles")
       .select("id, firstname, lastname, pseudo, email, is_admin, approved, active")
-      .eq("approved", false)
-      .eq("active", true)
-      .order("firstname", { ascending: true });
+      // Important : un profil créé par Supabase peut avoir approved à null.
+      // Pour éviter qu'une demande reste invisible, on récupère false OU null.
+      .or("approved.is.false,approved.is.null")
+      // On exclut uniquement les comptes explicitement désactivés.
+      .or("active.is.true,active.is.null")
+      .order("created_at", { ascending: false });
 
     if (error) {
       alert("Erreur chargement demandes : " + error.message);
@@ -1344,7 +1370,6 @@ async function toggleAdminProfile(profileId: string, makeAdmin: boolean) {
   }
 
   async function handleLogin() {
-    setSignupPending(false);
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
@@ -1392,7 +1417,12 @@ await supabase.auth.signOut();
       return;
     }
 
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    const cleanEmail = email.trim().toLowerCase();
+
+    const { data, error } = await supabase.auth.signUp({
+      email: cleanEmail,
+      password,
+    });
 
     if (error) {
       alert("Erreur inscription : " + error.message);
@@ -1403,54 +1433,41 @@ await supabase.auth.signOut();
     if (!newUser) return;
 
     const pseudo = `${firstname} ${lastname.charAt(0).toUpperCase()}.`;
-
     const acceptedAt = new Date().toISOString();
 
-    const { error: profileInsertError } = await supabase.from("profiles").insert({
-      id: newUser.id,
-      firstname,
-      lastname,
-      pseudo,
-      email,
-      is_admin: false,
-      approved: false,
-      active: true,
-      privacy_accepted: true,
-      privacy_accepted_at: acceptedAt,
-      privacy_version: PRIVACY_VERSION,
-    });
+    // Upsert au lieu de insert : si un trigger Supabase a déjà créé le profil,
+    // on le complète et on force le statut "en attente".
+    const { error: profileUpsertError } = await supabase
+      .from("profiles")
+      .upsert(
+        {
+          id: newUser.id,
+          firstname,
+          lastname,
+          pseudo,
+          email: cleanEmail,
+          is_admin: false,
+          approved: false,
+          active: true,
+          privacy_accepted: true,
+          privacy_accepted_at: acceptedAt,
+          privacy_version: PRIVACY_VERSION,
+        },
+        { onConflict: "id" }
+      );
 
-    if (profileInsertError) {
-      const { error: fallbackInsertError } = await supabase.from("profiles").insert({
-        id: newUser.id,
-        firstname,
-        lastname,
-        pseudo,
-        email,
-        is_admin: false,
-        approved: false,
-        active: true,
-      });
-
-      if (fallbackInsertError) {
-        alert("Erreur création du profil : " + fallbackInsertError.message);
-        return;
-      }
+    if (profileUpsertError) {
+      alert("Ton compte a été créé, mais le profil n’a pas pu être préparé : " + profileUpsertError.message);
+      return;
     }
 
+    setEmail(cleanEmail);
     setPrivacyAcceptedAt(acceptedAt);
-
-    setFirstname("");
-    setLastname("");
-    setPassword("");
-    setPrivacyAccepted(false);
-    setSignupPending(true);
-    setUser(null);
     setIsAdmin(false);
     setIsApproved(false);
     setIsActive(true);
     setProfileLoaded(true);
-    await supabase.auth.signOut();
+    setUser(newUser);
   }
 
   async function handleLogout() {
@@ -1460,7 +1477,6 @@ await supabase.auth.signOut();
     setShowMenu(false);
     setIsApproved(false);
     setIsActive(true);
-    setSignupPending(false);
     setProfileLoaded(true);
   }
 
@@ -1831,29 +1847,6 @@ if (isPasswordRecovery) {
     </div>
   );
 }
-  if (signupPending) {
-    return (
-      <div className="app-screen auth-screen">
-        <div className="auth-card">
-          <img src="/logo-asm.png" alt="ASM Pau" className="auth-logo" />
-          <h1>Compte en attente</h1>
-          <p>
-            Ton inscription a bien été enregistrée.
-            <br />
-            Un administrateur du club doit maintenant valider ton accès.
-          </p>
-          <p style={{ opacity: 0.75, fontSize: 14 }}>
-            Tu n’as rien d’autre à faire pour le moment. Une fois ton compte validé, tu pourras te connecter avec ton email et ton mot de passe.
-          </p>
-
-          <button className="secondary-btn" onClick={() => setSignupPending(false)}>
-            Retour à la connexion
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   if (!user) {
     return (
       <div className="app-screen auth-screen">
