@@ -73,6 +73,10 @@ type PersonalChrono = {
   previousChrono?: string;
   date: string;
   elevationGain?: string;
+  theoreticalChrono?: string;
+  theoreticalGainSeconds?: number;
+  suggestedVma?: string;
+  vmaAtEntry?: string;
 };
 
 type PersonalGoal =
@@ -225,6 +229,31 @@ function estimateVmaFromRace(distanceKm: number, totalMinutes: number) {
   else percent = 0.8;
 
   return (speed / percent).toFixed(1);
+}
+
+function chronoDistanceSettings(distance: string) {
+  if (distance === "5 km") return { km: 5, percent: 0.95 };
+  if (distance === "10 km") return { km: 10, percent: 0.9 };
+  if (distance === "Semi-marathon") return { km: 21.1, percent: 0.85 };
+  if (distance === "Marathon") return { km: 42.195, percent: 0.8 };
+  return null;
+}
+
+function theoreticalChronoFromVma(distance: string, vmaValue: string) {
+  const settings = chronoDistanceSettings(distance);
+  const vma = Number(vmaValue || 0);
+  if (!settings || !vma) return null;
+
+  const seconds = (settings.km / (vma * settings.percent)) * 3600;
+  return { seconds, label: formatChronoFromSeconds(seconds) };
+}
+
+function estimateVmaFromChronoDistance(distance: string, chronoSeconds: number) {
+  const settings = chronoDistanceSettings(distance);
+  if (!settings || !chronoSeconds) return null;
+
+  const speed = settings.km / (chronoSeconds / 3600);
+  return (speed / settings.percent).toFixed(1);
 }
 
 function calculateTargetFromStructuredSession(
@@ -519,6 +548,9 @@ const [newPassword, setNewPassword] = useState("");
       .sort((a, b) => a.seconds - b.seconds)[0];
 
     const previousChrono = previousBest && currentSeconds < previousBest.seconds ? previousBest.chrono : undefined;
+    const theoretical = theoreticalChronoFromVma(chronoDistance, profileVma);
+    const theoreticalGainSeconds = theoretical && currentSeconds < theoretical.seconds ? Math.round(theoretical.seconds - currentSeconds) : undefined;
+    const suggestedVma = theoreticalGainSeconds ? estimateVmaFromChronoDistance(chronoDistance, currentSeconds) : null;
 
     const newChrono: PersonalChrono = {
       id: `${Date.now()}`,
@@ -528,6 +560,10 @@ const [newPassword, setNewPassword] = useState("");
       previousChrono,
       date: chronoDate,
       elevationGain: chronoDistance.toLowerCase().includes("trail") ? chronoElevationGain.trim() : undefined,
+      theoreticalChrono: theoretical?.label,
+      theoreticalGainSeconds,
+      suggestedVma: suggestedVma || undefined,
+      vmaAtEntry: profileVma || undefined,
     };
 
     setPersonalChronos((current) => [newChrono, ...current]);
@@ -541,6 +577,27 @@ const [newPassword, setNewPassword] = useState("");
   function deletePersonalChrono(chronoId: string) {
     if (!window.confirm("Supprimer ce chrono ?")) return;
     setPersonalChronos((current) => current.filter((chrono) => chrono.id !== chronoId));
+  }
+
+  async function applySuggestedVmaFromChrono(suggestedVma: string) {
+    setProfileVma(suggestedVma);
+
+    if (!user) {
+      alert(`VMA mise à jour à ${suggestedVma}.`);
+      return;
+    }
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({ vma: Number(suggestedVma) })
+      .eq("id", user.id);
+
+    if (error) {
+      alert("La VMA a été modifiée dans l'application, mais pas sauvegardée dans Supabase : " + error.message);
+      return;
+    }
+
+    alert(`VMA mise à jour à ${suggestedVma} km/h pour tes prochaines séances.`);
   }
 
   const [formTitle, setFormTitle] = useState("");
@@ -1765,7 +1822,18 @@ if (isPasswordRecovery) {
                   .sort((a, b) => b.date.localeCompare(a.date))
                   .map((chrono) => {
                     const { gainSeconds, progressPercent } = chronoProgress(chrono.chrono, chrono.previousChrono);
-                    const isRecord = Boolean(chrono.previousChrono && gainSeconds > 0);
+                    const currentChronoSeconds = parseChronoToSeconds(chrono.chrono);
+                    const liveTheoretical = theoreticalChronoFromVma(chrono.distance, chrono.vmaAtEntry || profileVma);
+                    const liveTheoreticalGainSeconds =
+                      liveTheoretical && currentChronoSeconds && currentChronoSeconds < liveTheoretical.seconds
+                        ? Math.round(liveTheoretical.seconds - currentChronoSeconds)
+                        : undefined;
+                    const displayedTheoreticalChrono = chrono.theoreticalChrono || liveTheoretical?.label;
+                    const displayedTheoreticalGainSeconds = chrono.theoreticalGainSeconds || liveTheoreticalGainSeconds;
+                    const displayedSuggestedVma = chrono.suggestedVma || (currentChronoSeconds ? estimateVmaFromChronoDistance(chrono.distance, currentChronoSeconds) || undefined : undefined);
+                    const isPersonalRecord = Boolean(chrono.previousChrono && gainSeconds > 0);
+                    const isTheoreticalRecord = Boolean(displayedTheoreticalGainSeconds && displayedTheoreticalGainSeconds > 0);
+                    const isRecord = isPersonalRecord || isTheoreticalRecord;
                     const bestForDistance = personalChronos
                       .filter((item) => item.distance === chrono.distance)
                       .map((item) => ({ ...item, seconds: parseChronoToSeconds(item.chrono) || Infinity }))
@@ -1814,15 +1882,36 @@ if (isPasswordRecovery) {
                               background: "rgba(255,212,0,0.08)",
                             }}
                           >
-                            <p style={{ fontWeight: 800 }}>🏆 Bravo ! Tu as battu ton record sur {chrono.distance} !</p>
+                            <p style={{ fontWeight: 800 }}>🏆 Bravo ! Performance validée sur {chrono.distance} !</p>
+                            {isPersonalRecord && (
+                              <p style={{ marginTop: 6 }}>Tu as battu ton ancien record personnel enregistré.</p>
+                            )}
+                            {isTheoreticalRecord && (
+                              <p style={{ marginTop: 6, color: "#ffd400", fontWeight: 800 }}>
+                                🏆 Ton chrono est meilleur que ta performance théorique calculée avec ta VMA actuelle.
+                              </p>
+                            )}
                             {chrono.elevationGain && (
                               <p style={{ marginTop: 6, opacity: 0.82 }}>⛰️ Performance réalisée avec {chrono.elevationGain} m de D+.</p>
                             )}
-                            <p style={{ marginTop: 8 }}>Depuis ton ancienne référence ASM :</p>
-                            <p style={{ marginTop: 6 }}>{chrono.previousChrono} → {chrono.chrono}</p>
-                            <p style={{ marginTop: 6, color: "#ffd400", fontWeight: 800 }}>
-                              📈 Gain : {formatChronoFromSeconds(gainSeconds)} • +{progressPercent}%
-                            </p>
+                            {isPersonalRecord && (
+                              <>
+                                <p style={{ marginTop: 8 }}>Depuis ton ancienne référence ASM :</p>
+                                <p style={{ marginTop: 6 }}>{chrono.previousChrono} → {chrono.chrono}</p>
+                                <p style={{ marginTop: 6, color: "#ffd400", fontWeight: 800 }}>
+                                  📈 Gain : {formatChronoFromSeconds(gainSeconds)} • +{progressPercent}%
+                                </p>
+                              </>
+                            )}
+                            {isTheoreticalRecord && displayedTheoreticalChrono && displayedTheoreticalGainSeconds && (
+                              <>
+                                <p style={{ marginTop: 8 }}>Comparaison avec ta performance théorique :</p>
+                                <p style={{ marginTop: 6 }}>{displayedTheoreticalChrono} théorique → {chrono.chrono} réalisé</p>
+                                <p style={{ marginTop: 6, color: "#ffd400", fontWeight: 800 }}>
+                                  ⚡ Mieux que prévu de {formatChronoFromSeconds(displayedTheoreticalGainSeconds)}
+                                </p>
+                              </>
+                            )}
 
                             <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
                               <div>🔥 Ton travail commence vraiment à payer.</div>
@@ -1856,11 +1945,27 @@ if (isPasswordRecovery) {
                           >
                             <p style={{ fontWeight: 800 }}>🧠 Analyse ASM</p>
                             <p style={{ marginTop: 8 }}>
-                              Tes dernières performances progressent. Ta VMA utilisée pour les séances peut peut-être être réévaluée.
+                              Tes dernières performances sont supérieures aux repères utilisés actuellement. Tes allures d'entraînement peuvent probablement évoluer.
                             </p>
-                            <p style={{ marginTop: 8, color: "#ffd400" }}>
-                              ⚡ Mets à jour ta VMA ou parle-en à un entraîneur pour garder des allures adaptées.
-                            </p>
+                            {displayedSuggestedVma ? (
+                              <>
+                                <p style={{ marginTop: 8, color: "#ffd400", fontWeight: 800 }}>
+                                  ⚡ VMA actuelle : {chrono.vmaAtEntry || profileVma} km/h • VMA estimée avec ce chrono : {displayedSuggestedVma} km/h
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => applySuggestedVmaFromChrono(displayedSuggestedVma)}
+                                  className="secondary-btn"
+                                  style={{ marginTop: 10 }}
+                                >
+                                  Mettre à jour ma VMA à {displayedSuggestedVma} km/h
+                                </button>
+                              </>
+                            ) : (
+                              <p style={{ marginTop: 8, color: "#ffd400" }}>
+                                ⚡ Pense à réévaluer ta VMA ou à en parler à un entraîneur pour garder des allures adaptées.
+                              </p>
+                            )}
                           </div>
                         )}
 
@@ -1869,14 +1974,16 @@ if (isPasswordRecovery) {
                           onClick={() => deletePersonalChrono(chrono.id)}
                           style={{
                             marginTop: 12,
-                            border: "none",
-                            background: "transparent",
-                            color: "rgba(255,255,255,0.55)",
-                            textDecoration: "underline",
-                            padding: 0,
+                            border: "1px solid rgba(255,80,80,0.25)",
+                            background: "rgba(255,80,80,0.08)",
+                            color: "rgba(255,255,255,0.78)",
+                            borderRadius: 12,
+                            padding: "10px 12px",
+                            width: "100%",
+                            fontWeight: 800,
                           }}
                         >
-                          Supprimer ce chrono
+                          🗑️ Supprimer ce chrono
                         </button>
                       </div>
                     );
