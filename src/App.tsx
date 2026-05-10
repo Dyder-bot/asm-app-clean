@@ -152,6 +152,54 @@ const formatDuration = (seconds: number) => {
   return `${minutes}'${paddedSeconds}`;
 };
 
+function parseChronoToSeconds(value: string) {
+  const parts = value
+    .trim()
+    .replace("h", ":")
+    .replace("'", ":")
+    .replace("’", ":")
+    .split(":")
+    .map((part) => Number(part));
+
+  if (parts.some((part) => !Number.isFinite(part))) return null;
+
+  if (parts.length === 2) {
+    const [minutes, seconds] = parts;
+    return minutes * 60 + seconds;
+  }
+
+  if (parts.length === 3) {
+    const [hours, minutes, seconds] = parts;
+    return hours * 3600 + minutes * 60 + seconds;
+  }
+
+  return null;
+}
+
+function formatChronoFromSeconds(totalSeconds: number) {
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return "-";
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = Math.round(totalSeconds % 60);
+
+  if (hours > 0) return `${hours}:${pad(minutes)}:${pad(seconds)}`;
+  return `${minutes}:${pad(seconds)}`;
+}
+
+function chronoProgress(currentChrono: string, previousChrono?: string) {
+  const currentSeconds = parseChronoToSeconds(currentChrono);
+  const previousSeconds = previousChrono ? parseChronoToSeconds(previousChrono) : null;
+
+  if (!currentSeconds || !previousSeconds) {
+    return { gainSeconds: 0, progressPercent: null as string | null };
+  }
+
+  const gainSeconds = previousSeconds - currentSeconds;
+  const progressPercent = gainSeconds > 0 ? ((gainSeconds / previousSeconds) * 100).toFixed(1) : null;
+
+  return { gainSeconds, progressPercent };
+}
+
 function distanceBetween(a: { lat: number; lon: number }, b: { lat: number; lon: number }) {
   const earthRadiusKm = 6371;
   const dLat = ((b.lat - a.lat) * Math.PI) / 180;
@@ -405,17 +453,12 @@ export default function CalendarApp() {
   const [profileVma, setProfileVma] = useState("");
   const [profileFcMax, setProfileFcMax] = useState("");
   const [profileFcRest, setProfileFcRest] = useState("");
-  const personalChronos: PersonalChrono[] = [
-    {
-      id: "1",
-      distance: "10 km",
-      race: "Courir à Pau",
-      chrono: "42:00",
-      previousChrono: "47:00",
-      date: "2026-04-10",
-    },
-  ];
-
+  const [personalChronos, setPersonalChronos] = useState<PersonalChrono[]>([]);
+  const [showChronoForm, setShowChronoForm] = useState(false);
+  const [chronoDistance, setChronoDistance] = useState("10 km");
+  const [chronoRace, setChronoRace] = useState("");
+  const [chronoTime, setChronoTime] = useState("");
+  const [chronoDate, setChronoDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   const [raceDistance, setRaceDistance] = useState("");
   const [raceTime, setRaceTime] = useState("");
@@ -442,6 +485,59 @@ const [newPassword, setNewPassword] = useState("");
   const [showGpxMap, setShowGpxMap] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [gpxStats, setGpxStats] = useState<{ distance: string; elevationGain: number } | null>(null);
+
+  const chronoStorageKey = user?.id ? `asm-personal-chronos-${user.id}` : "asm-personal-chronos-demo";
+
+  useEffect(() => {
+    const storedChronos = window.localStorage.getItem(chronoStorageKey);
+    setPersonalChronos(storedChronos ? JSON.parse(storedChronos) : []);
+  }, [chronoStorageKey]);
+
+  useEffect(() => {
+    window.localStorage.setItem(chronoStorageKey, JSON.stringify(personalChronos));
+  }, [chronoStorageKey, personalChronos]);
+
+  function addPersonalChrono() {
+    const cleanedTime = chronoTime.trim();
+    const currentSeconds = parseChronoToSeconds(cleanedTime);
+
+    if (!chronoDistance || !cleanedTime || !chronoDate) {
+      alert("Merci de renseigner au minimum la distance, le chrono et la date.");
+      return;
+    }
+
+    if (!currentSeconds) {
+      alert("Format de chrono incorrect. Exemple : 42:00 ou 1:32:15.");
+      return;
+    }
+
+    const previousBest = personalChronos
+      .filter((chrono) => chrono.distance === chronoDistance)
+      .map((chrono) => ({ ...chrono, seconds: parseChronoToSeconds(chrono.chrono) || Infinity }))
+      .sort((a, b) => a.seconds - b.seconds)[0];
+
+    const previousChrono = previousBest && currentSeconds < previousBest.seconds ? previousBest.chrono : undefined;
+
+    const newChrono: PersonalChrono = {
+      id: `${Date.now()}`,
+      distance: chronoDistance,
+      race: chronoRace.trim() || "Course enregistrée",
+      chrono: formatChronoFromSeconds(currentSeconds),
+      previousChrono,
+      date: chronoDate,
+    };
+
+    setPersonalChronos((current) => [newChrono, ...current]);
+    setChronoRace("");
+    setChronoTime("");
+    setChronoDate(new Date().toISOString().slice(0, 10));
+    setShowChronoForm(false);
+  }
+
+  function deletePersonalChrono(chronoId: string) {
+    if (!window.confirm("Supprimer ce chrono ?")) return;
+    setPersonalChronos((current) => current.filter((chrono) => chrono.id !== chronoId));
+  }
 
   const [formTitle, setFormTitle] = useState("");
   const [formType, setFormType] = useState("Trail");
@@ -1545,120 +1641,218 @@ if (isPasswordRecovery) {
 
         {activeTab === "chronos" && (
           <section className="performance-screen">
-            <h2>Mes chronos</h2>
-<div className="performance-card">
-              <h3>📊 Mes chronos</h3>
-              <p>Visualise ta progression et tes records personnels.</p>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <div>
+                <h2>Mes chronos</h2>
+                <p className="empty-message" style={{ marginTop: 4 }}>
+                  Enregistre tes résultats et visualise ta progression réelle.
+                </p>
+              </div>
 
-              {personalChronos.map((chrono) => {
-                const currentSeconds =
-                  Number(chrono.chrono.split(":")[0]) * 60 +
-                  Number(chrono.chrono.split(":")[1]);
+              <button
+                type="button"
+                onClick={() => setShowChronoForm((value) => !value)}
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: 18,
+                  border: "1px solid rgba(214,232,59,0.45)",
+                  background: showChronoForm ? "#d6e83b" : "rgba(214,232,59,0.12)",
+                  color: showChronoForm ? "#10140d" : "#d6e83b",
+                  fontSize: 28,
+                  fontWeight: 900,
+                  lineHeight: 1,
+                }}
+                aria-label="Ajouter un chrono"
+              >
+                +
+              </button>
+            </div>
 
-                const previousSeconds = chrono.previousChrono
-                  ? Number(chrono.previousChrono.split(":")[0]) * 60 +
-                    Number(chrono.previousChrono.split(":")[1])
-                  : null;
+            {showChronoForm && (
+              <div className="performance-card" style={{ marginTop: 16 }}>
+                <h3>➕ Ajouter un résultat</h3>
+                <p>Renseigne ton chrono réel. L’application détecte automatiquement tes records et tes progrès.</p>
 
-                const gain = previousSeconds
-                  ? previousSeconds - currentSeconds
-                  : 0;
+                <label>
+                  Distance
+                  <select value={chronoDistance} onChange={(event) => setChronoDistance(event.target.value)}>
+                    <option>5 km</option>
+                    <option>10 km</option>
+                    <option>Semi-marathon</option>
+                    <option>Marathon</option>
+                    <option>Trail court</option>
+                    <option>Trail long</option>
+                  </select>
+                </label>
 
-                const progressPercent =
-                  previousSeconds && gain > 0
-                    ? ((gain / previousSeconds) * 100).toFixed(1)
-                    : null;
+                <label>
+                  Course / lieu
+                  <input
+                    value={chronoRace}
+                    onChange={(event) => setChronoRace(event.target.value)}
+                    placeholder="Ex : Courir à Pau"
+                  />
+                </label>
 
-                return (
-                  <div
-                    key={chrono.id}
-                    style={{
-                      background: "#111",
-                      borderRadius: 18,
-                      padding: 16,
-                      marginTop: 14,
-                      border: "1px solid rgba(255,255,255,0.08)",
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div>
-                        <strong style={{ fontSize: 18 }}>{chrono.distance}</strong>
-                        <p style={{ opacity: 0.7, marginTop: 4 }}>{chrono.race}</p>
-                      </div>
+                <label>
+                  Chrono
+                  <input
+                    value={chronoTime}
+                    onChange={(event) => setChronoTime(event.target.value)}
+                    placeholder="Ex : 42:00 ou 1:32:15"
+                  />
+                </label>
 
-                      <div style={{ textAlign: "right" }}>
-                        <strong style={{ fontSize: 22, color: "#ffd400" }}>
-                          {chrono.chrono}
-                        </strong>
-                        <p style={{ opacity: 0.7 }}>{formatDisplayDate(chrono.date)}</p>
-                      </div>
-                    </div>
+                <label>
+                  Date
+                  <input
+                    type="date"
+                    value={chronoDate}
+                    onChange={(event) => setChronoDate(event.target.value)}
+                  />
+                </label>
 
-                    {chrono.previousChrono && (
+                <button type="button" className="primary-btn" onClick={addPersonalChrono}>
+                  Enregistrer mon chrono
+                </button>
+              </div>
+            )}
+
+            <div className="performance-card" style={{ marginTop: 16 }}>
+              <h3>🏆 Mes records et ma progression</h3>
+
+              {personalChronos.length === 0 ? (
+                <div
+                  style={{
+                    marginTop: 14,
+                    padding: 18,
+                    borderRadius: 18,
+                    background: "rgba(255,255,255,0.05)",
+                    border: "1px dashed rgba(255,255,255,0.14)",
+                  }}
+                >
+                  <p style={{ fontWeight: 800 }}>Aucun chrono enregistré pour le moment.</p>
+                  <p style={{ marginTop: 8, opacity: 0.72 }}>
+                    Appuie sur le bouton + pour ajouter ton premier résultat de course.
+                  </p>
+                </div>
+              ) : (
+                personalChronos
+                  .slice()
+                  .sort((a, b) => b.date.localeCompare(a.date))
+                  .map((chrono) => {
+                    const { gainSeconds, progressPercent } = chronoProgress(chrono.chrono, chrono.previousChrono);
+                    const isRecord = Boolean(chrono.previousChrono && gainSeconds > 0);
+                    const bestForDistance = personalChronos
+                      .filter((item) => item.distance === chrono.distance)
+                      .map((item) => ({ ...item, seconds: parseChronoToSeconds(item.chrono) || Infinity }))
+                      .sort((a, b) => a.seconds - b.seconds)[0];
+
+                    return (
                       <div
+                        key={chrono.id}
                         style={{
-                          marginTop: 16,
-                          padding: 14,
-                          borderRadius: 14,
-                          background: "rgba(255,212,0,0.08)",
+                          background: "#111",
+                          borderRadius: 18,
+                          padding: 16,
+                          marginTop: 14,
+                          border: isRecord
+                            ? "1px solid rgba(214,232,59,0.45)"
+                            : "1px solid rgba(255,255,255,0.08)",
                         }}
                       >
-                        <p style={{ fontWeight: 700 }}>
-                          🏆 Bravo ! Tu progresses !
-                        </p>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                          <div>
+                            <strong style={{ fontSize: 18 }}>{chrono.distance}</strong>
+                            <p style={{ opacity: 0.7, marginTop: 4 }}>{chrono.race}</p>
+                          </div>
 
-                        <p style={{ marginTop: 8 }}>
-                          Depuis ton arrivée à l’ASM :
-                        </p>
+                          <div style={{ textAlign: "right" }}>
+                            <strong style={{ fontSize: 22, color: "#ffd400" }}>{chrono.chrono}</strong>
+                            <p style={{ opacity: 0.7 }}>{formatDisplayDate(chrono.date)}</p>
+                          </div>
+                        </div>
 
-                        <p style={{ marginTop: 6 }}>
-                          {chrono.previousChrono} → {chrono.chrono}
-                        </p>
+                        {bestForDistance?.id === chrono.id && (
+                          <div style={{ marginTop: 12, color: "#d6e83b", fontWeight: 800 }}>
+                            🏅 Meilleur chrono enregistré sur {chrono.distance}
+                          </div>
+                        )}
 
-                        <p style={{ marginTop: 6, color: "#ffd400", fontWeight: 700 }}>
-                          📈 Gain : {Math.floor(gain / 60)}’{pad(gain % 60)} • +{progressPercent}%
-                        </p>
+                        {isRecord ? (
+                          <div
+                            style={{
+                              marginTop: 16,
+                              padding: 14,
+                              borderRadius: 14,
+                              background: "rgba(255,212,0,0.08)",
+                            }}
+                          >
+                            <p style={{ fontWeight: 800 }}>🏆 Bravo ! Tu as battu ton record sur {chrono.distance} !</p>
+                            <p style={{ marginTop: 8 }}>Depuis ton ancienne référence ASM :</p>
+                            <p style={{ marginTop: 6 }}>{chrono.previousChrono} → {chrono.chrono}</p>
+                            <p style={{ marginTop: 6, color: "#ffd400", fontWeight: 800 }}>
+                              📈 Gain : {formatChronoFromSeconds(gainSeconds)} • +{progressPercent}%
+                            </p>
 
-                        <div
+                            <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+                              <div>🔥 Ton travail commence vraiment à payer.</div>
+                              <div>🚀 Tes performances montrent un vrai cap franchi.</div>
+                              <div>💪 Continue comme ça, tu es sur une très belle dynamique.</div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              marginTop: 14,
+                              padding: 12,
+                              borderRadius: 12,
+                              background: "rgba(255,255,255,0.04)",
+                              opacity: 0.9,
+                            }}
+                          >
+                            👏 Résultat enregistré. Chaque chrono construit ton historique de progression.
+                          </div>
+                        )}
+
+                        {profileVma && isRecord && (
+                          <div
+                            style={{
+                              marginTop: 14,
+                              padding: 12,
+                              borderRadius: 12,
+                              background: "rgba(255,255,255,0.05)",
+                            }}
+                          >
+                            <p style={{ fontWeight: 800 }}>🧠 Analyse ASM</p>
+                            <p style={{ marginTop: 8 }}>
+                              Tes dernières performances progressent. Ta VMA utilisée pour les séances peut peut-être être réévaluée.
+                            </p>
+                            <p style={{ marginTop: 8, color: "#ffd400" }}>
+                              ⚡ Mets à jour ta VMA ou parle-en à un entraîneur pour garder des allures adaptées.
+                            </p>
+                          </div>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => deletePersonalChrono(chrono.id)}
                           style={{
-                            marginTop: 14,
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 8,
+                            marginTop: 12,
+                            border: "none",
+                            background: "transparent",
+                            color: "rgba(255,255,255,0.55)",
+                            textDecoration: "underline",
+                            padding: 0,
                           }}
                         >
-                          <div>🔥 Ton travail commence vraiment à payer.</div>
-                          <div>🚀 Tes performances montrent un vrai cap franchi.</div>
-                          <div>💪 Continue comme ça, tu es sur une très belle dynamique.</div>
-                        </div>
+                          Supprimer ce chrono
+                        </button>
                       </div>
-                    )}
-
-                    {profileVma && (
-                      <div
-                        style={{
-                          marginTop: 14,
-                          padding: 12,
-                          borderRadius: 12,
-                          background: "rgba(255,255,255,0.05)",
-                        }}
-                      >
-                        <p style={{ fontWeight: 700 }}>
-                          🧠 Analyse ASM
-                        </p>
-
-                        <p style={{ marginTop: 8 }}>
-                          Tes dernières performances semblent supérieures aux estimations de ta VMA actuelle.
-                        </p>
-
-                        <p style={{ marginTop: 8, color: "#ffd400" }}>
-                          ⚡ Pense à réévaluer ta VMA afin d’ajuster encore plus précisément tes allures d’entraînement.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                    );
+                  })
+              )}
             </div>
           </section>
         )}
