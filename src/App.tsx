@@ -413,7 +413,10 @@ export default function CalendarApp() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
     return window.localStorage.getItem("asm-notifications") === "true";
   });
-
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(
+  window.location.pathname === "/reset-password"
+);
+const [newPassword, setNewPassword] = useState("");
   const [showGpxMap, setShowGpxMap] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [gpxStats, setGpxStats] = useState<{ distance: string; elevationGain: number } | null>(null);
@@ -720,7 +723,7 @@ export default function CalendarApp() {
     }
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin,
+      redirectTo: `${window.location.origin}/reset-password`,
     });
 
     if (error) {
@@ -742,7 +745,27 @@ export default function CalendarApp() {
     setProfileLoaded(false);
     setUser(data.user);
   }
+async function handleUpdatePassword() {
+  if (!newPassword || newPassword.length < 6) {
+    alert("Le mot de passe doit contenir au moins 6 caractères.");
+    return;
+  }
 
+  const { error } = await supabase.auth.updateUser({
+    password: newPassword,
+  });
+
+  if (error) {
+    alert("Erreur modification mot de passe : " + error.message);
+    return;
+  }
+
+  alert("Mot de passe modifié. Tu peux maintenant te connecter.");
+  setIsPasswordRecovery(false);
+  setNewPassword("");
+  window.history.replaceState({}, "", "/");
+  await supabase.auth.signOut();
+}
   async function handleSignup() {
     if (!firstname || !lastname || !email || !password) {
       alert("Merci de remplir prénom, nom, email et mot de passe.");
@@ -1133,7 +1156,28 @@ export default function CalendarApp() {
       </div>
     );
   }
+if (isPasswordRecovery) {
+  return (
+    <div className="app-screen auth-screen">
+      <div className="auth-card">
+        <img src="/logo-asm.png" alt="ASM Pau" className="auth-logo" />
+        <h1>Nouveau mot de passe</h1>
+        <p>Choisis ton nouveau mot de passe.</p>
 
+        <input
+          type="password"
+          placeholder="Nouveau mot de passe"
+          value={newPassword}
+          onChange={(e) => setNewPassword(e.target.value)}
+        />
+
+        <button className="primary-btn" onClick={handleUpdatePassword}>
+          Modifier le mot de passe
+        </button>
+      </div>
+    </div>
+  );
+}
   if (!user) {
     return (
       <div className="app-screen auth-screen">
