@@ -405,7 +405,7 @@ export default function CalendarApp() {
   const [profileVma, setProfileVma] = useState("");
   const [profileFcMax, setProfileFcMax] = useState("");
   const [profileFcRest, setProfileFcRest] = useState("");
-  const [personalChronos] = useState(...)[]>([
+  const personalChronos = [
     {
       id: "1",
       distance: "10 km",
@@ -414,7 +414,7 @@ export default function CalendarApp() {
       previousChrono: "47:00",
       date: "2026-04-10",
     },
-  ]);
+  ];
 
 
   const [raceDistance, setRaceDistance] = useState("");
