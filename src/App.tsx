@@ -405,7 +405,7 @@ export default function CalendarApp() {
   const [profileVma, setProfileVma] = useState("");
   const [profileFcMax, setProfileFcMax] = useState("");
   const [profileFcRest, setProfileFcRest] = useState("");
-  const [personalChronos, setPersonalChronos] = useState<PersonalChrono[]>([
+  const [personalChronos] = useState(...)[]>([
     {
       id: "1",
       distance: "10 km",
