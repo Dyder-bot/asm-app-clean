@@ -660,7 +660,29 @@ const [newPassword, setNewPassword] = useState("");
     await refreshAdminLists();
     setApprovingAdminProfileId(null);
   }
+async function toggleAdminProfile(profileId: string, makeAdmin: boolean) {
+  if (!user || !isAdmin) return;
 
+  const confirmMessage = makeAdmin
+    ? "Nommer cette personne administrateur ?"
+    : "Retirer les droits administrateur à cette personne ?";
+
+  if (!window.confirm(confirmMessage)) return;
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({
+      is_admin: makeAdmin,
+    })
+    .eq("id", profileId);
+
+  if (error) {
+    alert("Erreur modification admin : " + error.message);
+    return;
+  }
+
+  await refreshAdminLists();
+}
   async function deactivateProfile(profileId: string) {
     if (!isAdmin) return;
 
