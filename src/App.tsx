@@ -1199,7 +1199,12 @@ if (isPasswordRecovery) {
     );
   }
 
-  if (user && (!isApproved || !isActive) && !isAdmin) {
+  if (
+  user &&
+  profileLoaded &&
+  (!isApproved || !isActive) &&
+  !isAdmin
+) {
     return (
       <div className="app-screen auth-screen">
         <div className="auth-card">
