@@ -771,11 +771,16 @@ async function handleUpdatePassword() {
     return;
   }
 
-  alert("Mot de passe modifié. Tu peux maintenant te connecter.");
-  setIsPasswordRecovery(false);
-  setNewPassword("");
-  window.history.replaceState({}, "", "/");
-  await supabase.auth.signOut();
+  alert("Mot de passe modifié. Tu peux maintenant te reconnecter.");
+setIsPasswordRecovery(false);
+setNewPassword("");
+setUser(null);
+setIsAdmin(false);
+setIsApproved(false);
+setIsActive(true);
+setProfileLoaded(true);
+window.history.replaceState({}, "", "/");
+await supabase.auth.signOut();
 }
   async function handleSignup() {
     if (!firstname || !lastname || !email || !password) {
@@ -1213,6 +1218,7 @@ if (isPasswordRecovery) {
   if (
   user &&
   profileLoaded &&
+  !isPasswordRecovery &&
   (!isApproved || !isActive) &&
   !isAdmin
 ) {
