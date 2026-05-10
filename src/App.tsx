@@ -1554,12 +1554,28 @@ if (isPasswordRecovery) {
                     </div>
 
                     <div className="admin-actions">
-                      <button
-                        className={`danger-btn ${deactivatingProfileId === profile.id ? "selected" : ""}`}
-                        onClick={() => deactivateProfile(profile.id)}
-                      >
-                        Retirer l’accès
-                      </button>
+                      {profile.is_admin ? (
+  <button
+    className="secondary-btn"
+    onClick={() => toggleAdminProfile(profile.id, false)}
+  >
+    Retirer admin
+  </button>
+) : (
+  <button
+    className="admin-choice-btn"
+    onClick={() => toggleAdminProfile(profile.id, true)}
+  >
+    Nommer admin
+  </button>
+)}
+
+<button
+  className={`danger-btn ${deactivatingProfileId === profile.id ? "selected" : ""}`}
+  onClick={() => deactivateProfile(profile.id)}
+>
+  Retirer l’accès
+</button>
                     </div>
                   </div>
                 ))}
