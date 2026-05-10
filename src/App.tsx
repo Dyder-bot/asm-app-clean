@@ -89,6 +89,8 @@ type PersonalGoal =
       vma: number;
       pace: number;
       timeSeconds: number;
+      recoverySeconds?: number;
+      isTimeBased?: boolean;
     }
   | {
       type: "fc";
@@ -147,16 +149,40 @@ function formatPace(paceMinKm: number) {
 const formatDuration = (seconds: number) => {
   if (!Number.isFinite(seconds) || seconds <= 0) return "-";
 
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = Math.round(seconds % 60);
+  const roundedSeconds = Math.round(seconds);
+  const hours = Math.floor(roundedSeconds / 3600);
+  const minutes = Math.floor((roundedSeconds % 3600) / 60);
+  const secs = roundedSeconds % 60;
 
-  const paddedMinutes = minutes.toString().padStart(2, "0");
-  const paddedSeconds = secs.toString().padStart(2, "0");
-
-  if (hours > 0) return `${hours}h${paddedMinutes}'${paddedSeconds}`;
-  return `${minutes}'${paddedSeconds}`;
+  if (hours > 0) return `${hours}h${pad(minutes)}'${pad(secs)}"`;
+  if (minutes > 0) return secs > 0 ? `${minutes}'${pad(secs)}"` : `${minutes}'`;
+  return `${secs}"`;
 };
+
+
+function parseIntervalDurationToSeconds(value?: string | null) {
+  if (!value) return null;
+
+  const cleaned = value
+    .toLowerCase()
+    .replace(/’/g, "'")
+    .replace(/min/g, "'")
+    .replace(/secondes?/g, '"')
+    .replace(/sec/g, '"')
+    .replace(/\s+/g, "")
+    .replace(/[”]/g, '"')
+    .replace(/s$/g, "");
+
+  const minuteSecondMatch = cleaned.match(/^(\d+)'(\d{1,2})?"?$/);
+  if (minuteSecondMatch) {
+    return Number(minuteSecondMatch[1]) * 60 + Number(minuteSecondMatch[2] || 0);
+  }
+
+  const secondMatch = cleaned.match(/^(\d+)"?$/);
+  if (secondMatch) return Number(secondMatch[1]);
+
+  return null;
+}
 
 function parseChronoToSeconds(value: string) {
   const parts = value
@@ -372,7 +398,33 @@ function calculateTargetFromText(
   const seuilMatch = text.match(/(\d+)\s*[x×]\s*(\d+)'?\s*(au\s*)?seuil/);
   const km10Match = text.match(/(\d+)\s*[x×]\s*(\d+)\s*(m|km)?\s*.*?(allure\s*)?(10\s?km)/);
   const allureMatch = text.match(/allure\s*(\d+)'(\d{1,2})"?/);
-  const seuilIntervalMatch = text.match(/(\d+)\s*[x×]\s*(\d+)\s*["”]?\s*\/\s*(\d+)\s*["”]?\s*.*?seuil/);
+  const seuilIntervalMatch = text.match(/(\d+)\s*[x×]\s*((?:\d+\s*['’]\s*)?\d+)\s*["”]?\s*\/\s*((?:\d+\s*['’]\s*)?\d+)\s*["”]?\s*.*?seuil/);
+  const vmaTimeIntervalMatch = text.match(/(\d+)\s*[x×]\s*((?:\d+\s*['’]\s*)?\d+)\s*(?:["”]|sec|s|secondes?)?\s*\/\s*((?:\d+\s*['’]\s*)?\d+)\s*(?:["”]|sec|s|secondes?)?\s*.*?(vma|vite)/);
+
+  if (vmaTimeIntervalMatch && vma > 0) {
+    const repetitions = Number(vmaTimeIntervalMatch[1]);
+    const workSeconds = parseIntervalDurationToSeconds(vmaTimeIntervalMatch[2]);
+    const recoverySeconds = parseIntervalDurationToSeconds(vmaTimeIntervalMatch[3]);
+
+    if (!workSeconds) return null;
+
+    const percent = 100;
+    const speed = (vma * percent) / 100;
+    const pace = 60 / speed;
+    const distance = Math.round((speed * 1000 * workSeconds) / 3600);
+
+    return {
+      type: "vma",
+      repetitions,
+      distance,
+      percent,
+      vma,
+      pace,
+      timeSeconds: workSeconds,
+      recoverySeconds: recoverySeconds || undefined,
+      isTimeBased: true,
+    };
+  }
 
   if (vmaMatch && vma > 0) {
     const repetitions = Number(vmaMatch[1]);
@@ -386,11 +438,12 @@ function calculateTargetFromText(
 
   if (seuilIntervalMatch) {
     const repetitions = Number(seuilIntervalMatch[1]);
-    const workSeconds = Number(seuilIntervalMatch[2]);
+    const workSeconds = parseIntervalDurationToSeconds(seuilIntervalMatch[2]) || 0;
+    const recoverySeconds = parseIntervalDurationToSeconds(seuilIntervalMatch[3]) || 0;
 
     return {
       type: "effort",
-      title: `${repetitions} × ${workSeconds}"/${seuilIntervalMatch[3]}" au seuil`,
+      title: `${repetitions} × ${formatDuration(workSeconds)}/${formatDuration(recoverySeconds)} au seuil`,
       detail: isTrailSession
         ? "Travail au seuil en terrain variable : privilégier l’effort et la respiration, sans chercher une allure fixe."
         : "Travail au seuil court : rester contrôlé, régulier, sans partir trop vite.",
@@ -596,7 +649,6 @@ const [newPassword, setNewPassword] = useState("");
     return Object.entries(grouped)
       .map(([distance, items]) => {
         const sorted = items.slice().sort((a, b) => a.date.localeCompare(b.date));
-        if (sorted.length < 2) return null;
 
         const first = sorted[0];
         const last = sorted[sorted.length - 1];
@@ -1922,18 +1974,18 @@ if (isPasswordRecovery) {
               </div>
             )}
 
-            {chronoEvolutionGroups.length > 0 && (
+            {personalChronos.length > 0 && (
               <button
                 type="button"
                 className="secondary-btn"
                 onClick={() => setShowChronoGraph((value) => !value)}
                 style={{ width: "100%", marginTop: 16 }}
               >
-                {showChronoGraph ? "Masquer le graphique d’évolution" : "📈 Voir mon graphique d’évolution"}
+                {showChronoGraph ? "📈 Masquer mon évolution ASM" : "📈 Voir mon évolution ASM"}
               </button>
             )}
 
-            {chronoEvolutionGroups.length > 0 && showChronoGraph && (
+            {personalChronos.length > 0 && showChronoGraph && (
               <div className="performance-card" style={{ marginTop: 16 }}>
                 <h3>📈 Mon évolution depuis l’ASM</h3>
                 <p>
@@ -2406,7 +2458,7 @@ if (isPasswordRecovery) {
             <div className="create-card">
               <div className="form-row">
                 <label>Titre</label>
-                <input placeholder="Ex : 8 x 400 m à 95% VMA" value={formTitle} onChange={(e) => setFormTitle(e.target.value)} />
+                <input placeholder={'Ex : 8 x 400 m à 95% VMA ou 10 x 30"/30" à VMA'} value={formTitle} onChange={(e) => setFormTitle(e.target.value)} />
               </div>
 
               <div className="form-row">
@@ -2528,20 +2580,37 @@ if (isPasswordRecovery) {
 
                       {personalGoal.type === "vma" && (
                         <>
-                          <p>
-                            Séance :{" "}
-                            {personalGoal.repetitions
-                              ? `${personalGoal.repetitions} × `
-                              : ""}
-                            {personalGoal.distance} m
-                          </p>
-                          <p>VMA utilisée : {personalGoal.vma} km/h</p>
-                          <p>Intensité : {personalGoal.percent}% VMA</p>
-                          <p>Allure cible : {formatPace(personalGoal.pace)}</p>
-                          <p>
-                            Temps cible : {formatDuration(personalGoal.timeSeconds)} par
-                            fraction
-                          </p>
+                          {personalGoal.isTimeBased ? (
+                            <>
+                              <p>
+                                Séance : {personalGoal.repetitions || ""} × {formatDuration(personalGoal.timeSeconds)}
+                                {personalGoal.recoverySeconds
+                                  ? ` / ${formatDuration(personalGoal.recoverySeconds)} récup.`
+                                  : ""}
+                              </p>
+                              <p>Objectif : tenir l’allure correspondant à ta VMA sur chaque fraction rapide.</p>
+                              <p>VMA utilisée : {personalGoal.vma} km/h</p>
+                              <p className="goal-highlight">Allure cible : {formatPace(personalGoal.pace)}</p>
+                              <p className="goal-muted">Repère indicatif : environ {personalGoal.distance} m sur {formatDuration(personalGoal.timeSeconds)}.</p>
+                            </>
+                          ) : (
+                            <>
+                              <p>
+                                Séance :{" "}
+                                {personalGoal.repetitions
+                                  ? `${personalGoal.repetitions} × `
+                                  : ""}
+                                {personalGoal.distance} m
+                              </p>
+                              <p>VMA utilisée : {personalGoal.vma} km/h</p>
+                              <p>Intensité : {personalGoal.percent}% VMA</p>
+                              <p>Allure cible : {formatPace(personalGoal.pace)}</p>
+                              <p>
+                                Temps cible : {formatDuration(personalGoal.timeSeconds)} par
+                                fraction
+                              </p>
+                            </>
+                          )}
                         </>
                       )}
 
