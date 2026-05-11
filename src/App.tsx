@@ -2639,7 +2639,7 @@ if (isPasswordRecovery) {
             </div>
 
             <div className="performance-card" style={{ marginTop: 16 }}>
-              <h3>📊 Mes chronos théoriques</h3>
+              <h3>📊 Mes performances théoriques</h3>
               <p>Repères de potentiel calculés avec ta VMA actuelle. Ils servent de comparaison avec tes chronos réels.</p>
 
               <table className="performance-table">
