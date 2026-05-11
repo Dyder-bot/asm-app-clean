@@ -33,7 +33,13 @@ const EVENT_KINDS = [
 
 type EventKind = typeof EVENT_KINDS[number]["value"];
 const RACE_DESCRIPTION_MARKER = "[ASM_EVENT_KIND:COURSE]";
-const RACE_COLORS = { background: "#FFDDD2", border: "#E76F51", text: "#7A271A" };
+const RACE_COLORS = {
+  background: "#DDF6E8",
+  border: "#3CB371",
+  button: "#2E8B57",
+  text: "#102015",
+  muted: "#2E5E43",
+};
 
 const WEEK_DAYS = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
 
@@ -605,15 +611,65 @@ function detectRaceDistance(session?: Pick<Session, "title" | "description" | "t
     .toLowerCase()
     .replace(/,/g, ".");
 
-  if (/semi|21\s*[,.]?\s*1?\s*km|21k/.test(text)) return "Semi-marathon";
-  if (/marathon|42\s*[,.]?\s*195?\s*km|42k/.test(text)) return "Marathon";
-  if (/10\s*km|10k/.test(text)) return "10 km";
-  if (/5\s*km|5k/.test(text)) return "5 km";
+  // Routes uniquement : les bornes évitent de lire “2x25km” comme “5 km”.
+  if (/\bsemi\b|\b21\s*(?:\.\s*)?1?\s*km\b|\b21k\b/.test(text)) return "Semi-marathon";
+  if (/\bmarathon\b|\b42\s*(?:\.\s*)?195?\s*km\b|\b42k\b/.test(text)) return "Marathon";
+  if (/\b10\s*km\b|\b10k\b/.test(text)) return "10 km";
+  if (/\b5\s*km\b|\b5k\b/.test(text)) return "5 km";
   return null;
 }
 
-function raceProjectionFromVma(session: Session | null, vmaValue: string) {
+function isTrailRace(session?: Pick<Session, "title" | "description" | "type"> | null) {
+  const text = `${session?.title || ""} ${session?.description || ""} ${session?.type || ""}`.toLowerCase();
+  return /trail|d\+|dénivelé|denivele|\d+\s*x\s*\d+(?:\.\d+)?\s*km|\d+\s*m\s*(?:d\+|\+)/.test(text);
+}
+
+function detectTrailRaceFormat(session?: Pick<Session, "title" | "description" | "type"> | null) {
+  const text = `${session?.title || ""} ${session?.description || ""}`
+    .toLowerCase()
+    .replace(/,/g, ".");
+
+  const multiStageMatch = text.match(/(\d+)\s*x\s*(\d+(?:\.\d+)?)\s*km/);
+  const distanceMatch = text.match(/\b(\d+(?:\.\d+)?)\s*km\b/);
+  const elevationMatch = text.match(/(\d{2,5})\s*(?:m\s*)?(?:d\+|d\s*\+|\+)/);
+
+  const distanceLabel = multiStageMatch
+    ? `${multiStageMatch[1]} × ${multiStageMatch[2]} km`
+    : distanceMatch
+      ? `${distanceMatch[1]} km`
+      : null;
+  const elevationLabel = elevationMatch ? `${elevationMatch[1]} m D+` : null;
+
+  if (distanceLabel && elevationLabel) return `${distanceLabel} / ${elevationLabel}`;
+  return distanceLabel || elevationLabel || "Trail avec dénivelé";
+}
+
+type RaceProjection =
+  | {
+      kind: "road";
+      distance: string;
+      from: string;
+      to: string;
+      range: string;
+      pace: number | null;
+    }
+  | {
+      kind: "trail";
+      distance: string;
+      fcLabel: string;
+    };
+
+function raceProjectionFromVma(session: Session | null, vmaValue: string, profileFcMax = ""): RaceProjection | null {
   if (!session || !isRaceSession(session)) return null;
+
+  if (isTrailRace(session)) {
+    return {
+      kind: "trail",
+      distance: detectTrailRaceFormat(session),
+      fcLabel: formatFcRangeLabel(profileFcMax, 75, 85, "sv1"),
+    };
+  }
+
   const distance = detectRaceDistance(session);
   if (!distance) return null;
 
@@ -625,6 +681,7 @@ function raceProjectionFromVma(session: Session | null, vmaValue: string) {
   const pace = settings ? theoretical.seconds / 60 / settings.km : null;
 
   return {
+    kind: "road",
     distance,
     from: formatChronoFromSeconds(theoretical.seconds),
     to: formatChronoFromSeconds(upperSeconds),
@@ -1382,7 +1439,7 @@ const [newPassword, setNewPassword] = useState("");
   const displayedParticipantList =
     showParticipantList === "present" ? presentParticipants : interestedParticipants;
 
-  const selectedRaceProjection = raceProjectionFromVma(selectedSession, profileVma);
+  const selectedRaceProjection = raceProjectionFromVma(selectedSession, profileVma, profileFcMax);
 
   const personalGoals = selectedSession && myParticipation === "present"
     ? (() => {
@@ -2438,9 +2495,7 @@ await supabase.auth.signOut();
 
   function renderSessionCard(session: Session & { participationStatus?: ParticipationStatus }, compact = false) {
     const sessionIsRace = isRaceSession(session);
-    const sessionProjection = raceProjectionFromVma(session, profileVma);
-
-    return (
+      return (
       <button
         key={session.id}
         onClick={() => {
@@ -2448,16 +2503,15 @@ await supabase.auth.signOut();
           setActiveTab("calendar");
         }}
         className={`session-card ${sessionIsRace ? "race-card" : "training-card"} ${compact ? "compact" : ""}`}
-        style={sessionIsRace ? { borderLeft: `6px solid ${RACE_COLORS.border}`, background: RACE_COLORS.background } : undefined}
+        style={sessionIsRace ? { borderLeft: `6px solid ${RACE_COLORS.border}`, background: RACE_COLORS.background, color: RACE_COLORS.text } : undefined}
       >
         {session.image_url && <img className="session-thumb" src={session.image_url} alt="" />}
         <div className="session-card-content">
-          <strong>{sessionIsRace ? "🏁 " : ""}{session.title}</strong>
-          <span>{formatDisplayDate(session.date)} • {session.start_time} - {session.end_time}</span>
-          <small>{sessionIsRace ? "🏁 Course" : `🏷️ ${session.type || "Entraînement"}`}</small>
-          {sessionProjection && <small>🎯 Objectif estimé : {sessionProjection.range}</small>}
-          {session.location && <small>📍 {session.location}</small>}
-          {session.gpx_url && <small>🗺️ GPX disponible</small>}
+          <strong style={sessionIsRace ? { color: RACE_COLORS.text } : undefined}>{sessionIsRace ? "🏁 " : ""}{session.title}</strong>
+          <span style={sessionIsRace ? { color: RACE_COLORS.muted } : undefined}>{formatDisplayDate(session.date)} • {session.start_time} - {session.end_time}</span>
+          <small style={sessionIsRace ? { color: RACE_COLORS.muted } : undefined}>{sessionIsRace ? "🏁 Course" : `🏷️ ${session.type || "Entraînement"}`}</small>
+          {session.location && <small style={sessionIsRace ? { color: RACE_COLORS.muted } : undefined}>📍 {session.location}</small>}
+          {session.gpx_url && <small style={sessionIsRace ? { color: RACE_COLORS.muted } : undefined}>🗺️ GPX disponible</small>}
           {session.participationStatus && (
             <small className="status-badge">{session.participationStatus === "present" ? "✓ Participant" : "☆ Intéressé"}</small>
           )}
@@ -3704,7 +3758,7 @@ if (isPasswordRecovery) {
                       type="button"
                       className={formEventKind === kind.value ? "primary-btn" : "secondary-btn"}
                       onClick={() => setFormEventKind(kind.value)}
-                      style={kind.value === "race" && formEventKind === "race" ? { background: RACE_COLORS.border, color: "white" } : undefined}
+                      style={kind.value === "race" && formEventKind === "race" ? { background: RACE_COLORS.button, color: "white" } : undefined}
                     >
                       {kind.icon} {kind.label}
                     </button>
@@ -3729,7 +3783,7 @@ if (isPasswordRecovery) {
               {formEventKind === "race" && (
                 <div className="form-row" style={{ borderLeft: `5px solid ${RACE_COLORS.border}`, background: RACE_COLORS.background, padding: 12, borderRadius: 16 }}>
                   <label style={{ color: RACE_COLORS.text }}>Course</label>
-                  <small style={{ color: RACE_COLORS.text }}>Ajoute la distance dans le titre ou la description, par exemple “10 km”, “semi” ou “marathon”. Si tu ajoutes un lien d’inscription dans la description, il sera affiché en bouton.</small>
+                  <small style={{ color: RACE_COLORS.muted }}>Ajoute la distance dans le titre ou la description, par exemple “10 km”, “semi”, “marathon” ou “2x25km 1200D+”. Si tu ajoutes un lien d’inscription dans la description, il sera affiché en bouton.</small>
                 </div>
               )}
 
@@ -3779,13 +3833,13 @@ if (isPasswordRecovery) {
 
               {selectedSession.image_url && <img src={selectedSession.image_url} alt={selectedSession.title} />}
 
-              <div className="detail-box" style={isRaceSession(selectedSession) ? { borderLeft: `6px solid ${RACE_COLORS.border}`, background: RACE_COLORS.background } : undefined}>
-                <p>{isRaceSession(selectedSession) ? "🏁 Course" : `🏷️ ${selectedSession.type || "Entraînement"}`}</p>
-                <p>📍 {selectedSession.location || "Lieu non renseigné"}</p>
-                <p className="session-description">{cleanSessionDescription(selectedSession.description) || "Aucune description"}</p>
+              <div className="detail-box" style={isRaceSession(selectedSession) ? { borderLeft: `6px solid ${RACE_COLORS.border}`, background: RACE_COLORS.background, color: RACE_COLORS.text } : undefined}>
+                <p style={isRaceSession(selectedSession) ? { color: RACE_COLORS.text } : undefined}>{isRaceSession(selectedSession) ? "🏁 Course" : `🏷️ ${selectedSession.type || "Entraînement"}`}</p>
+                <p style={isRaceSession(selectedSession) ? { color: RACE_COLORS.text } : undefined}>📍 {selectedSession.location || "Lieu non renseigné"}</p>
+                <p className="session-description" style={isRaceSession(selectedSession) ? { color: RACE_COLORS.text } : undefined}>{cleanSessionDescription(selectedSession.description) || "Aucune description"}</p>
 
                 {isRaceSession(selectedSession) && extractFirstUrl(selectedSession.description) && (
-                  <a className="primary-btn" href={extractFirstUrl(selectedSession.description) || "#"} target="_blank" rel="noreferrer" style={{ display: "inline-flex", marginTop: 10, background: RACE_COLORS.border, color: "white" }}>
+                  <a className="primary-btn" href={extractFirstUrl(selectedSession.description) || "#"} target="_blank" rel="noreferrer" style={{ display: "inline-flex", marginTop: 10, background: RACE_COLORS.button, color: "white" }}>
                     Ouvrir le lien d’inscription
                   </a>
                 )}
@@ -3838,14 +3892,26 @@ if (isPasswordRecovery) {
                 </div>
               </div>
 
-              {selectedRaceProjection && (
+              {selectedRaceProjection && myParticipation === "present" && (
                 <div className="personal-goal-card selected-goal" style={{ borderLeft: `6px solid ${RACE_COLORS.border}` }}>
-                  <h3>🏁 Objectif estimé</h3>
-                  <p>Distance détectée : {selectedRaceProjection.distance}</p>
-                  <p className="goal-highlight">Objectif réaliste : {selectedRaceProjection.range}</p>
-                  {selectedRaceProjection.pace && <p>Allure repère : {formatPace(selectedRaceProjection.pace)}</p>}
-                  <p>Avec ta VMA et tes repères actuels, cette fourchette semble cohérente. Pars propre, reste patient, puis crois en toi sur la deuxième partie : tu as les moyens d’aller chercher une belle course.</p>
-                  <p className="goal-muted">Projection indicative : elle doit être ajustée selon le parcours, la météo, la fatigue et les sensations du jour.</p>
+                  <h3>{selectedRaceProjection.kind === "trail" ? "⛰️ Repère trail" : "🏁 Objectif estimé"}</h3>
+                  <p>Format détecté : {selectedRaceProjection.distance}</p>
+
+                  {selectedRaceProjection.kind === "road" ? (
+                    <>
+                      <p className="goal-highlight">Objectif réaliste : {selectedRaceProjection.range}</p>
+                      {selectedRaceProjection.pace && <p>Allure repère : {formatPace(selectedRaceProjection.pace)}</p>}
+                      <p>Avec ta VMA et tes repères actuels, cette fourchette semble cohérente. Pars propre, reste patient, puis crois en toi sur la deuxième partie : tu as les moyens d’aller chercher une belle course.</p>
+                      <p className="goal-muted">Projection indicative : elle doit être ajustée selon le parcours, la météo, la fatigue et les sensations du jour.</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="goal-highlight">Objectif : gérer l’effort, pas l’allure.</p>
+                      <p>{selectedRaceProjection.fcLabel}</p>
+                      <p>Sur trail, le chrono dépend surtout du terrain, du dénivelé, de la météo et de la gestion. Reste facile dans les montées, relance proprement quand le terrain le permet, et garde de l’énergie pour finir fort.</p>
+                      <p className="goal-muted">Repère indicatif : en trail, l’allure au kilomètre n’est pas une cible fiable. La fréquence cardiaque et les sensations doivent rester prioritaires.</p>
+                    </>
+                  )}
                 </div>
               )}
 
