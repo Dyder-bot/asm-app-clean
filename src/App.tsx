@@ -4060,7 +4060,7 @@ if (isPasswordRecovery) {
                                   onClick={() => setConfirmedGoalIndex(raceGoalIndex)}
                                   style={{ marginTop: 12 }}
                                 >
-                                  {isRaceGoalConfirmed ? "Objectif sélectionné" : "Choisir cette distance"}
+                                  {isRaceGoalConfirmed ? "" : "Choisir cette distance"}
                                 </button>
                               </>
                             ) : (
@@ -4077,7 +4077,7 @@ if (isPasswordRecovery) {
                                   onClick={() => setConfirmedGoalIndex(raceGoalIndex)}
                                   style={{ marginTop: 12 }}
                                 >
-                                  {isRaceGoalConfirmed ? "Objectif sélectionné" : "Choisir cet objectif trail"}
+                                  {isRaceGoalConfirmed ? "" : " trail"}
                                 </button>
                               </>
                             )}
@@ -4232,7 +4232,7 @@ if (isPasswordRecovery) {
                               onClick={() => setConfirmedGoalIndex(goalIndex)}
                               style={{ marginTop: 12 }}
                             >
-                              {isGoalConfirmed ? "Objectif sélectionné" : "Choisir cet objectif"}
+                              {isGoalConfirmed ? "" : ""}
                             </button>
                           </>
                         )}
