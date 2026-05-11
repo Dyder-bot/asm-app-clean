@@ -2844,43 +2844,123 @@ if (isPasswordRecovery) {
             <div className="performance-card">
               <h3>❤️ Zones cardiaques Karvonen</h3>
 
+              <p className="empty-message" style={{ marginBottom: 16 }}>
+                Calculé à partir de la fréquence cardiaque de réserve (méthode Karvonen)
+              </p>
+
               <table className="performance-table compact-table">
                 <thead>
                   <tr>
                     <th>Zone</th>
                     <th>% réserve</th>
                     <th>FC cible</th>
+                    <th>Évolution du type d'entraînement</th>
                   </tr>
                 </thead>
 
                 <tbody>
                   {[
-                    ["🟢 Endurance", "60–70%", 0.65],
-                    ["🔵 Active", "70–78%", 0.75],
-                    ["🟡 Tempo", "78–85%", 0.8],
-                    ["🟠 Seuil", "85–90%", 0.88],
-                    ["🔴 Intense", "90–95%", 0.92],
-                  ].map(([label, percentText, percent]) => {
-                    const fcMax = Number(profileFcMax);
-                    const fcRest = Number(profileFcRest);
-                    const fc = fcMax && fcRest
-                      ? Math.round((fcMax - fcRest) * Number(percent) + fcRest)
-                      : null;
-
-                    return (
-                      <tr key={String(label)}>
-                        <td>{label}</td>
-                        <td>{percentText}</td>
-                        <td>{fc ? `${fc} bpm` : "-"}</td>
-                      </tr>
-                    );
-                  })}
+                    {
+                      zone: "Zone 1",
+                      reserve: "< 63%",
+                      fc: "< 135 bpm",
+                      evolution: [
+                        "🟢 Récupération",
+                        "⬇",
+                        "🔵 Échauffement",
+                      ],
+                    },
+                    {
+                      zone: "Zone 2",
+                      reserve: "63–75%",
+                      fc: "135–153 bpm",
+                      evolution: [
+                        "🟢 Endurance fondamentale",
+                        "⬇",
+                        "🟡 Endurance active",
+                        "⬇",
+                        "🟠 SV1",
+                      ],
+                    },
+                    {
+                      zone: "Zone 3",
+                      reserve: "75–83%",
+                      fc: "153–164 bpm",
+                      evolution: [
+                        "🟢 Tempo facile",
+                        "⬇",
+                        "🟡 Tempo soutenu",
+                        "⬇",
+                        "🟠 SV2 contrôlé",
+                      ],
+                    },
+                    {
+                      zone: "Zone 4",
+                      reserve: "84–90%",
+                      fc: "164–174 bpm",
+                      evolution: [
+                        "🟠 Allure spécifique",
+                        "⬇",
+                        "🔴 SV2 / seuil",
+                      ],
+                    },
+                    {
+                      zone: "Zone 5",
+                      reserve: "91–96%",
+                      fc: "176–183 bpm",
+                      evolution: [
+                        "🔴 VMA / PMA",
+                        "⬇",
+                        "🟣 Fin de bloc intense",
+                      ],
+                    },
+                  ].map((item) => (
+                    <tr key={item.zone}>
+                      <td><strong>{item.zone}</strong></td>
+                      <td>{item.reserve}</td>
+                      <td><strong>{item.fc}</strong></td>
+                      <td>
+                        <div style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 4,
+                          lineHeight: 1.3,
+                        }}>
+                          {item.evolution.map((step, idx) => (
+                            <span
+                              key={idx}
+                              style={{
+                                color: step.includes("🟢")
+                                  ? "#6EEB83"
+                                  : step.includes("🟡")
+                                  ? "#FFD93D"
+                                  : step.includes("🟠")
+                                  ? "#FF9F1C"
+                                  : step.includes("🔴")
+                                  ? "#FF4D4D"
+                                  : step.includes("🟣")
+                                  ? "#B388FF"
+                                  : "#9BE564",
+                                fontWeight: step === "⬇" ? 700 : 500,
+                                textAlign: step === "⬇" ? "center" : "left",
+                              }}
+                            >
+                              {step}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
 
               <div className="zone-info-box">
-                <p><strong>SV1</strong> ≈ 75–80% VMA • 70–78% FC réserve</p>
-                <p><strong>SV2 / seuil</strong> ≈ 85–90% VMA • 85–90% FC réserve</p>
+                <p><strong>FC réserve</strong> = FC max − FC repos</p>
+                <p><strong>FC cible</strong> = (% × FC réserve) + FC repos</p>
+                <br />
+                <p><strong>SV1</strong> ≈ 70–75% FC réserve</p>
+                <p><strong>SV2 / seuil</strong> ≈ 85–90% FC réserve</p>
               </div>
             </div>
 
