@@ -15,6 +15,93 @@ const ADMIN_EMAILS = [
 ];
 
 
+
+const ASM_PWA_ASSETS_VERSION = "2026-05-11-full-icon";
+const ASM_PWA_ICON_192 = "/icon-192.png";
+const ASM_PWA_ICON_512 = "/icon-512.png";
+const ASM_PWA_MASKABLE_ICON_192 = "/maskable-icon-192.png";
+const ASM_PWA_MASKABLE_ICON_512 = "/maskable-icon-512.png";
+
+function installAsmPwaManifest() {
+  if (typeof document === "undefined") return;
+
+  const withVersion = (path: string) => `${path}?v=${ASM_PWA_ASSETS_VERSION}`;
+
+  const upsertLink = (rel: string, href: string, sizes?: string) => {
+    const selector = sizes ? `link[rel="${rel}"][sizes="${sizes}"]` : `link[rel="${rel}"]`;
+    let link = document.querySelector<HTMLLinkElement>(selector);
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = rel;
+      if (sizes) link.sizes = sizes;
+      document.head.appendChild(link);
+    }
+    link.href = href;
+  };
+
+  const upsertMeta = (name: string, content: string) => {
+    let meta = document.querySelector<HTMLMetaElement>(`meta[name="${name}"]`);
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = name;
+      document.head.appendChild(meta);
+    }
+    meta.content = content;
+  };
+
+  document.title = "ASM Pau";
+  upsertMeta("theme-color", "#d7ee3f");
+  upsertMeta("apple-mobile-web-app-capable", "yes");
+  upsertMeta("apple-mobile-web-app-title", "ASM Pau");
+  upsertMeta("mobile-web-app-capable", "yes");
+
+  upsertLink("icon", withVersion(ASM_PWA_ICON_192), "192x192");
+  upsertLink("icon", withVersion(ASM_PWA_ICON_512), "512x512");
+  upsertLink("apple-touch-icon", withVersion(ASM_PWA_ICON_192), "192x192");
+
+  const manifest = {
+    name: "ASM Pau",
+    short_name: "ASM Pau",
+    description: "Application ASM Pau Course à Pied",
+    start_url: "/",
+    scope: "/",
+    display: "standalone",
+    orientation: "portrait",
+    theme_color: "#d7ee3f",
+    background_color: "#070b07",
+    icons: [
+      {
+        src: withVersion(ASM_PWA_ICON_192),
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
+        src: withVersion(ASM_PWA_ICON_512),
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
+        src: withVersion(ASM_PWA_MASKABLE_ICON_192),
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "maskable",
+      },
+      {
+        src: withVersion(ASM_PWA_MASKABLE_ICON_512),
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "maskable",
+      },
+    ],
+  };
+
+  const manifestBlob = new Blob([JSON.stringify(manifest)], { type: "application/manifest+json" });
+  const manifestUrl = URL.createObjectURL(manifestBlob);
+  upsertLink("manifest", manifestUrl);
+}
+
 const SESSION_TYPES = [
   "Trail",
   "Course à pied",
@@ -986,6 +1073,9 @@ function PrivacyPolicyBlock() {
 }
 
 export default function CalendarApp() {
+  useEffect(() => {
+    installAsmPwaManifest();
+  }, []);
   const [activeTab, setActiveTab] = useState<AppTab>("calendar");
   const [showMenu, setShowMenu] = useState(false);
   const [showAdminActions, setShowAdminActions] = useState(false);
