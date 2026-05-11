@@ -701,6 +701,38 @@ function raceProjectionsFromVma(session: Session | null, vmaValue: string, profi
     .filter((projection): projection is RaceProjection => Boolean(projection));
 }
 
+
+function roadRaceAdvice(distance: string) {
+  const key = distance.toLowerCase();
+
+  if (key.includes("5 km")) {
+    return "Le 5 km demande un engagement rapide et une forte tolérance à l’effort. Pars vite mais contrôlé, reste relâché malgré l’intensité, puis accepte que la deuxième moitié soit exigeante.";
+  }
+
+  if (key.includes("10 km")) {
+    return "Le 10 km est une course intense : ça va piquer, mais c’est normal. Ne te laisse pas emporter au départ. Reste propre jusqu’au 7e km, puis utilise ta vitesse sur la fin.";
+  }
+
+  if (key.includes("semi")) {
+    return "Le semi-marathon récompense la patience. Ne pars pas trop vite : l’objectif est d’être encore solide après le 15e km. Installe ton allure, reste régulier et fais confiance au travail réalisé.";
+  }
+
+  if (key.includes("marathon")) {
+    return "Le marathon est une course de gestion. Ne cours pas contre les autres dans la première moitié. Le vrai marathon commence souvent après le 30e km : reste patient, alimente-toi tôt et crois en ton plan.";
+  }
+
+  return "Choisis la distance qui correspond à ta préparation. La projection donne un repère, mais la réussite viendra surtout de la régularité, de la maîtrise et des sensations du jour.";
+}
+
+function raceGoalShortLabel(distance: string) {
+  const key = distance.toLowerCase();
+  if (key.includes("semi")) return "Semi-marathon";
+  if (key.includes("marathon")) return "Marathon";
+  if (key.includes("10 km")) return "10 km";
+  if (key.includes("5 km")) return "5 km";
+  return distance;
+}
+
 function estimateVmaFromChronoDistance(distance: string, chronoSeconds: number) {
   const settings = chronoDistanceSettings(distance);
   if (!settings || !chronoSeconds) return null;
@@ -3905,41 +3937,49 @@ if (isPasswordRecovery) {
 
               {selectedRaceProjections.length > 0 && myParticipation === "present" && (
                 <div className="personal-goals-wrapper">
-                  {selectedRaceProjections.map((raceProjection, raceGoalIndex) => (
-                    <div
-                      key={`${raceProjection.kind}-${raceProjection.distance}-${raceGoalIndex}`}
-                      className={`personal-goal-card ${selectedGoalIndex === raceGoalIndex ? "selected-goal" : ""}`}
-                      style={{ borderLeft: `6px solid ${RACE_COLORS.border}` }}
-                    >
-                      <h3>{raceProjection.kind === "trail" ? "⛰️ Repère trail" : `🏁 Objectif ${raceGoalIndex + 1}`}</h3>
-                      <p>Format détecté : {raceProjection.distance}</p>
+                  {selectedRaceProjections.map((raceProjection, raceGoalIndex) => {
+                    const isRaceGoalSelected = selectedGoalIndex === raceGoalIndex;
+                    const shortLabel = raceProjection.kind === "trail" ? raceProjection.distance : raceGoalShortLabel(raceProjection.distance);
 
-                      {raceProjection.kind === "road" ? (
-                        <>
-                          <p className="goal-highlight">Objectif réaliste : {raceProjection.range}</p>
-                          {raceProjection.pace && <p>Allure repère : {formatPace(raceProjection.pace)}</p>}
-                          <p>Avec ta VMA et tes repères actuels, cette fourchette semble cohérente. Choisis la distance que tu prépares, pars propre, reste patient, puis crois en toi : tu as les moyens d’aller chercher une belle course.</p>
-                          <p className="goal-muted">Projection indicative : elle doit être ajustée selon le parcours, la météo, la fatigue et les sensations du jour.</p>
-                        </>
-                      ) : (
-                        <>
-                          <p className="goal-highlight">Objectif : gérer l’effort, pas l’allure.</p>
-                          <p>{raceProjection.fcLabel}</p>
-                          <p>Sur trail, le chrono dépend surtout du terrain, du dénivelé, de la météo et de la gestion. Reste facile dans les montées, relance proprement quand le terrain le permet, et garde de l’énergie pour finir fort.</p>
-                          <p className="goal-muted">Repère indicatif : en trail, l’allure au kilomètre n’est pas une cible fiable. La fréquence cardiaque et les sensations doivent rester prioritaires.</p>
-                        </>
-                      )}
-
-                      {selectedRaceProjections.length > 1 && (
+                    return (
+                      <div
+                        key={`${raceProjection.kind}-${raceProjection.distance}-${raceGoalIndex}`}
+                        className={`personal-goal-card ${isRaceGoalSelected ? "selected-goal" : ""}`}
+                        style={{ borderLeft: `6px solid ${RACE_COLORS.border}` }}
+                      >
                         <button
-                          className={selectedGoalIndex === raceGoalIndex ? "goal-selected-btn" : "goal-unselected-btn"}
+                          type="button"
+                          className={isRaceGoalSelected ? "goal-selected-btn" : "goal-unselected-btn"}
                           onClick={() => setSelectedGoalIndex(raceGoalIndex)}
+                          style={{ marginBottom: isRaceGoalSelected ? 16 : 0 }}
                         >
-                          {selectedGoalIndex === raceGoalIndex ? "Objectif sélectionné" : "Choisir cet objectif"}
+                          🏁 Objectif {raceGoalIndex + 1} — {shortLabel}
                         </button>
-                      )}
-                    </div>
-                  ))}
+
+                        {isRaceGoalSelected && (
+                          <>
+                            {raceProjection.kind === "road" ? (
+                              <>
+                                <p className="goal-highlight">Objectif réaliste : {raceProjection.range}</p>
+                                {raceProjection.pace && <p>Allure repère : {formatPace(raceProjection.pace)}</p>}
+                                <p>{roadRaceAdvice(raceProjection.distance)}</p>
+                                <p className="goal-muted">Projection indicative : à ajuster selon le parcours, la météo, la fatigue et les sensations du jour.</p>
+                              </>
+                            ) : (
+                              <>
+                                <h3>⛰️ Repère trail</h3>
+                                <p>Format détecté : {raceProjection.distance}</p>
+                                <p className="goal-highlight">Objectif : gérer l’effort, pas l’allure.</p>
+                                <p>{raceProjection.fcLabel}</p>
+                                <p>Sur trail, le chrono dépend surtout du terrain, du dénivelé, de la météo et de la gestion. Reste facile dans les montées, relance proprement quand le terrain le permet, et garde de l’énergie pour finir fort.</p>
+                                <p className="goal-muted">Repère indicatif : en trail, l’allure au kilomètre n’est pas une cible fiable. La fréquence cardiaque et les sensations doivent rester prioritaires.</p>
+                              </>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
