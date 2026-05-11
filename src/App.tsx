@@ -15,93 +15,6 @@ const ADMIN_EMAILS = [
 ];
 
 
-
-const ASM_PWA_ASSETS_VERSION = "2026-05-11-full-icon";
-const ASM_PWA_ICON_192 = "/icon-192.png";
-const ASM_PWA_ICON_512 = "/icon-512.png";
-const ASM_PWA_MASKABLE_ICON_192 = "/maskable-icon-192.png";
-const ASM_PWA_MASKABLE_ICON_512 = "/maskable-icon-512.png";
-
-function installAsmPwaManifest() {
-  if (typeof document === "undefined") return;
-
-  const withVersion = (path: string) => `${path}?v=${ASM_PWA_ASSETS_VERSION}`;
-
-  const upsertLink = (rel: string, href: string, sizes?: string) => {
-    const selector = sizes ? `link[rel="${rel}"][sizes="${sizes}"]` : `link[rel="${rel}"]`;
-    let link = document.querySelector<HTMLLinkElement>(selector);
-    if (!link) {
-      link = document.createElement("link");
-      link.rel = rel;
-      if (sizes) link.sizes = sizes;
-      document.head.appendChild(link);
-    }
-    link.href = href;
-  };
-
-  const upsertMeta = (name: string, content: string) => {
-    let meta = document.querySelector<HTMLMetaElement>(`meta[name="${name}"]`);
-    if (!meta) {
-      meta = document.createElement("meta");
-      meta.name = name;
-      document.head.appendChild(meta);
-    }
-    meta.content = content;
-  };
-
-  document.title = "ASM Pau";
-  upsertMeta("theme-color", "#d7ee3f");
-  upsertMeta("apple-mobile-web-app-capable", "yes");
-  upsertMeta("apple-mobile-web-app-title", "ASM Pau");
-  upsertMeta("mobile-web-app-capable", "yes");
-
-  upsertLink("icon", withVersion(ASM_PWA_ICON_192), "192x192");
-  upsertLink("icon", withVersion(ASM_PWA_ICON_512), "512x512");
-  upsertLink("apple-touch-icon", withVersion(ASM_PWA_ICON_192), "192x192");
-
-  const manifest = {
-    name: "ASM Pau",
-    short_name: "ASM Pau",
-    description: "Application ASM Pau Course à Pied",
-    start_url: "/",
-    scope: "/",
-    display: "standalone",
-    orientation: "portrait",
-    theme_color: "#d7ee3f",
-    background_color: "#070b07",
-    icons: [
-      {
-        src: withVersion(ASM_PWA_ICON_192),
-        sizes: "192x192",
-        type: "image/png",
-        purpose: "any",
-      },
-      {
-        src: withVersion(ASM_PWA_ICON_512),
-        sizes: "512x512",
-        type: "image/png",
-        purpose: "any",
-      },
-      {
-        src: withVersion(ASM_PWA_MASKABLE_ICON_192),
-        sizes: "192x192",
-        type: "image/png",
-        purpose: "maskable",
-      },
-      {
-        src: withVersion(ASM_PWA_MASKABLE_ICON_512),
-        sizes: "512x512",
-        type: "image/png",
-        purpose: "maskable",
-      },
-    ],
-  };
-
-  const manifestBlob = new Blob([JSON.stringify(manifest)], { type: "application/manifest+json" });
-  const manifestUrl = URL.createObjectURL(manifestBlob);
-  upsertLink("manifest", manifestUrl);
-}
-
 const SESSION_TYPES = [
   "Trail",
   "Course à pied",
@@ -1073,9 +986,6 @@ function PrivacyPolicyBlock() {
 }
 
 export default function CalendarApp() {
-  useEffect(() => {
-    installAsmPwaManifest();
-  }, []);
   const [activeTab, setActiveTab] = useState<AppTab>("calendar");
   const [showMenu, setShowMenu] = useState(false);
   const [showAdminActions, setShowAdminActions] = useState(false);
@@ -1589,15 +1499,23 @@ const [newPassword, setNewPassword] = useState("");
       // Pour éviter qu'une demande reste invisible, on récupère false OU null.
       .or("approved.is.false,approved.is.null")
       // On exclut uniquement les comptes explicitement désactivés.
-      .or("active.is.true,active.is.null")
-      .order("firstname", { ascending: true });
+      .or("active.is.true,active.is.null");
 
     if (error) {
-      alert("Erreur chargement demandes : " + error.message);
+      // On ne bloque plus l'application avec une fenêtre d'alerte.
+      // Cela évite les popups à l'ouverture si Supabase refuse une colonne ou un tri.
+      console.error("Erreur chargement demandes :", error.message);
+      setPendingProfiles([]);
       return;
     }
 
-    setPendingProfiles((data || []) as MemberProfile[]);
+    const sortedProfiles = [...(data || [])].sort((a, b) =>
+      `${a.firstname || ""} ${a.lastname || ""} ${a.email || ""}`.localeCompare(
+        `${b.firstname || ""} ${b.lastname || ""} ${b.email || ""}`
+      )
+    );
+
+    setPendingProfiles(sortedProfiles as MemberProfile[]);
   }
 
   async function fetchApprovedProfiles() {
@@ -1605,15 +1523,22 @@ const [newPassword, setNewPassword] = useState("");
       .from("profiles")
       .select("id, firstname, lastname, pseudo, email, is_admin, approved, active")
       .eq("approved", true)
-      .eq("active", true)
-      .order("firstname", { ascending: true });
+      .eq("active", true);
 
     if (error) {
-      alert("Erreur chargement membres : " + error.message);
+      // Même logique : pas d'alerte bloquante au démarrage.
+      console.error("Erreur chargement membres :", error.message);
+      setApprovedProfiles([]);
       return;
     }
 
-    setApprovedProfiles((data || []) as MemberProfile[]);
+    const sortedProfiles = [...(data || [])].sort((a, b) =>
+      `${a.firstname || ""} ${a.lastname || ""} ${a.email || ""}`.localeCompare(
+        `${b.firstname || ""} ${b.lastname || ""} ${b.email || ""}`
+      )
+    );
+
+    setApprovedProfiles(sortedProfiles as MemberProfile[]);
   }
 
   async function refreshAdminLists() {
@@ -2501,7 +2426,7 @@ if (isPasswordRecovery) {
 
         <nav className="side-nav">
           <button className={activeTab === "calendar" ? "active" : ""} onClick={() => { setActiveTab("calendar"); setShowMenu(false); }}>📅 Calendrier</button>
-          <button className={activeTab === "mySessions" ? "active" : ""} onClick={() => { setActiveTab("mySessions"); setShowMenu(false); }}>👤 Mes performances</button>
+          <button className={activeTab === "mySessions" ? "active" : ""} onClick={() => { setActiveTab("mySessions"); setShowMenu(false); }}>🎯 Mes zones cibles</button>
           <button className={activeTab === "chronos" ? "active" : ""} onClick={() => { setActiveTab("chronos"); setShowMenu(false); }}>🏆 Mes chronos</button>
           {isAdmin && (
             <button className={activeTab === "importPlan" ? "active" : ""} onClick={() => { setActiveTab("importPlan"); setShowMenu(false); }}>📥 Importer un plan</button>
@@ -2542,7 +2467,7 @@ if (isPasswordRecovery) {
               {activeTab === "calendar"
                 ? "ASM Pau"
                 : activeTab === "mySessions"
-                ? "Mes performances"
+                ? "Mes zones cibles"
                 : activeTab === "chronos"
                 ? "Mes chronos"
                 : activeTab === "profile"
@@ -2606,7 +2531,7 @@ if (isPasswordRecovery) {
 
         {activeTab === "mySessions" && (
           <section className="performance-screen">
-            <h2>Mes performances</h2>
+            <h2>Mes zones cibles</h2>
 
             <div className="performance-card">
               <h3>⚡ Zones d’allure</h3>
@@ -2679,37 +2604,6 @@ if (isPasswordRecovery) {
               </div>
             </div>
 
-            <div className="performance-card">
-              <h3>🏆 Performances théoriques</h3>
-              <p>Repères de potentiel basés sur ta VMA, placés ici en complément des allures et zones cardio.</p>
-
-              <table className="performance-table">
-                <thead>
-                  <tr>
-                    <th>Distance</th>
-                    <th>% VMA</th>
-                    <th>Temps</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>10 km</td>
-                    <td>90%</td>
-                    <td>{profileVma ? formatDuration((10 / (Number(profileVma) * 0.9)) * 3600) : "-"}</td>
-                  </tr>
-                  <tr>
-                    <td>Semi</td>
-                    <td>85%</td>
-                    <td>{profileVma ? formatDuration((21.1 / (Number(profileVma) * 0.85)) * 3600) : "-"}</td>
-                  </tr>
-                  <tr>
-                    <td>Marathon</td>
-                    <td>80%</td>
-                    <td>{profileVma ? formatDuration((42.195 / (Number(profileVma) * 0.8)) * 3600) : "-"}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
 
           </section>
         )}
@@ -2742,6 +2636,38 @@ if (isPasswordRecovery) {
               >
                 +
               </button>
+            </div>
+
+            <div className="performance-card" style={{ marginTop: 16 }}>
+              <h3>📊 Mes chronos théoriques</h3>
+              <p>Repères de potentiel calculés avec ta VMA actuelle. Ils servent de comparaison avec tes chronos réels.</p>
+
+              <table className="performance-table">
+                <thead>
+                  <tr>
+                    <th>Distance</th>
+                    <th>% VMA</th>
+                    <th>Temps</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>10 km</td>
+                    <td>90%</td>
+                    <td>{profileVma ? formatDuration((10 / (Number(profileVma) * 0.9)) * 3600) : "-"}</td>
+                  </tr>
+                  <tr>
+                    <td>Semi</td>
+                    <td>85%</td>
+                    <td>{profileVma ? formatDuration((21.1 / (Number(profileVma) * 0.85)) * 3600) : "-"}</td>
+                  </tr>
+                  <tr>
+                    <td>Marathon</td>
+                    <td>80%</td>
+                    <td>{profileVma ? formatDuration((42.195 / (Number(profileVma) * 0.8)) * 3600) : "-"}</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
 
             {showChronoForm && (
@@ -2992,21 +2918,31 @@ if (isPasswordRecovery) {
                       .sort((a, b) => a.seconds - b.seconds)[0];
 
                     return (
-                      <div key={chrono.id} style={{ marginTop: 12 }}>
+                      <div
+                        key={chrono.id}
+                        style={{
+                          marginTop: 12,
+                          background: "#111",
+                          borderRadius: 18,
+                          overflow: "hidden",
+                          border: isSelected
+                            ? "1px solid rgba(214,232,59,0.75)"
+                            : isRecord
+                            ? "1px solid rgba(214,232,59,0.32)"
+                            : "1px solid rgba(255,255,255,0.08)",
+                        }}
+                      >
                         <button
                           type="button"
                           onClick={() => setSelectedChronoId((current) => current === chrono.id ? null : chrono.id)}
                           style={{
                             width: "100%",
                             textAlign: "left",
-                            background: "#111",
-                            borderRadius: 18,
+                            background: "transparent",
+                            borderRadius: 0,
                             padding: 16,
-                            border: isSelected
-                              ? "1px solid rgba(214,232,59,0.7)"
-                              : isRecord
-                              ? "1px solid rgba(214,232,59,0.32)"
-                              : "1px solid rgba(255,255,255,0.08)",
+                            border: "none",
+                            borderBottom: isSelected ? "1px solid rgba(214,232,59,0.25)" : "none",
                             color: "white",
                             cursor: "pointer",
                           }}
@@ -3027,7 +2963,7 @@ if (isPasswordRecovery) {
                               <strong style={{ fontSize: 22, color: "#ffd400" }}>{chrono.chrono}</strong>
                               <p style={{ opacity: 0.7 }}>{formatDisplayDate(chrono.date)}</p>
                               <p style={{ marginTop: 8, color: "#d6e83b", fontWeight: 800, fontSize: 13 }}>
-                                {isSelected ? "Masquer" : "Voir le détail"}
+                                {isSelected ? "Détail ouvert" : "Voir le détail"}
                               </p>
                             </div>
                           </div>
@@ -3036,11 +2972,9 @@ if (isPasswordRecovery) {
                         {isSelected && (
                           <div
                             style={{
-                              background: "#111",
-                              borderRadius: 18,
+                              background: "rgba(255,255,255,0.025)",
                               padding: 16,
-                              marginTop: 10,
-                              border: "1px solid rgba(214,232,59,0.28)",
+                              borderTop: "1px solid rgba(214,232,59,0.16)",
                             }}
                           >
                             {bestForDistance?.id === chrono.id && (
