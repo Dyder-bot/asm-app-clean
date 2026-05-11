@@ -26,6 +26,15 @@ const SESSION_TYPES = [
   "Ski de randonnée",
 ];
 
+const EVENT_KINDS = [
+  { value: "training", label: "Entraînement", icon: "🟡" },
+  { value: "race", label: "Course", icon: "🏁" },
+] as const;
+
+type EventKind = typeof EVENT_KINDS[number]["value"];
+const RACE_DESCRIPTION_MARKER = "[ASM_EVENT_KIND:COURSE]";
+const RACE_COLORS = { background: "#FFDDD2", border: "#E76F51", text: "#7A271A" };
+
 const WEEK_DAYS = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
 
 type AppTab = "calendar" | "mySessions" | "chronos" | "profile" | "notifications" | "admin" | "importPlan";
@@ -570,6 +579,58 @@ function theoreticalChronoFromVma(distance: string, vmaValue: string) {
 
   const seconds = (settings.km / (vma * settings.percent)) * 3600;
   return { seconds, label: formatChronoFromSeconds(seconds) };
+}
+
+function formatChronoRange(fromSeconds: number, toSeconds: number) {
+  return `${formatChronoFromSeconds(fromSeconds)} à ${formatChronoFromSeconds(toSeconds)}`;
+}
+
+function extractFirstUrl(text?: string | null) {
+  const match = (text || "").match(/https?:\/\/[^\s)]+/i);
+  return match?.[0] || null;
+}
+
+function cleanSessionDescription(description?: string | null) {
+  return (description || "").replace(RACE_DESCRIPTION_MARKER, "").trim();
+}
+
+function isRaceSession(session?: Pick<Session, "type" | "title" | "description"> | null) {
+  if (!session) return false;
+  const text = `${session.type || ""} ${session.title || ""} ${session.description || ""}`.toLowerCase();
+  return session.type === "Course" || text.includes(RACE_DESCRIPTION_MARKER.toLowerCase()) || text.includes("🏁 course");
+}
+
+function detectRaceDistance(session?: Pick<Session, "title" | "description" | "type"> | null) {
+  const text = `${session?.title || ""} ${session?.description || ""} ${session?.type || ""}`
+    .toLowerCase()
+    .replace(/,/g, ".");
+
+  if (/semi|21\s*[,.]?\s*1?\s*km|21k/.test(text)) return "Semi-marathon";
+  if (/marathon|42\s*[,.]?\s*195?\s*km|42k/.test(text)) return "Marathon";
+  if (/10\s*km|10k/.test(text)) return "10 km";
+  if (/5\s*km|5k/.test(text)) return "5 km";
+  return null;
+}
+
+function raceProjectionFromVma(session: Session | null, vmaValue: string) {
+  if (!session || !isRaceSession(session)) return null;
+  const distance = detectRaceDistance(session);
+  if (!distance) return null;
+
+  const theoretical = theoreticalChronoFromVma(distance, vmaValue);
+  if (!theoretical) return null;
+
+  const upperSeconds = Math.round(theoretical.seconds * 1.025);
+  const settings = chronoDistanceSettings(distance);
+  const pace = settings ? theoretical.seconds / 60 / settings.km : null;
+
+  return {
+    distance,
+    from: formatChronoFromSeconds(theoretical.seconds),
+    to: formatChronoFromSeconds(upperSeconds),
+    range: formatChronoRange(theoretical.seconds, upperSeconds),
+    pace,
+  };
 }
 
 function estimateVmaFromChronoDistance(distance: string, chronoSeconds: number) {
@@ -1281,6 +1342,7 @@ const [newPassword, setNewPassword] = useState("");
 
   const [formTitle, setFormTitle] = useState("");
   const [formType, setFormType] = useState("Trail");
+  const [formEventKind, setFormEventKind] = useState<EventKind>("training");
   const [formStartTime, setFormStartTime] = useState("18:30");
   const [formEndTime, setFormEndTime] = useState("20:00");
   const [formLocation, setFormLocation] = useState("");
@@ -1305,9 +1367,12 @@ const [newPassword, setNewPassword] = useState("");
 
   const sessionsByDate = useMemo(() => {
     return sessions.reduce((acc, session) => {
-      acc[session.date] = true;
+      const current = acc[session.date] || { hasTraining: false, hasRace: false };
+      if (isRaceSession(session)) current.hasRace = true;
+      else current.hasTraining = true;
+      acc[session.date] = current;
       return acc;
-    }, {} as Record<string, boolean>);
+    }, {} as Record<string, { hasTraining: boolean; hasRace: boolean }>);
   }, [sessions]);
 
   const sessionsForSelectedDate = selectedDate
@@ -1316,6 +1381,8 @@ const [newPassword, setNewPassword] = useState("");
 
   const displayedParticipantList =
     showParticipantList === "present" ? presentParticipants : interestedParticipants;
+
+  const selectedRaceProjection = raceProjectionFromVma(selectedSession, profileVma);
 
   const personalGoals = selectedSession && myParticipation === "present"
     ? (() => {
@@ -1988,6 +2055,7 @@ await supabase.auth.signOut();
   function resetForm() {
     setFormTitle("");
     setFormType("Trail");
+    setFormEventKind("training");
     setFormStartTime("18:30");
     setFormEndTime("20:00");
     setFormLocation("");
@@ -2019,11 +2087,12 @@ await supabase.auth.signOut();
     setEditingSession(selectedSession);
 
     setFormTitle(selectedSession.title || "");
-    setFormType(selectedSession.type || "Trail");
+    setFormEventKind(isRaceSession(selectedSession) ? "race" : "training");
+    setFormType(selectedSession.type && selectedSession.type !== "Course" ? selectedSession.type : "Trail");
     setFormStartTime(selectedSession.start_time || "18:30");
     setFormEndTime(selectedSession.end_time || "20:00");
     setFormLocation(selectedSession.location || "");
-    setFormDescription(selectedSession.description || "");
+    setFormDescription(cleanSessionDescription(selectedSession.description));
     setFormWorkoutMode((selectedSession.workout_mode || "") as WorkoutMode);
     setFormFractionDistance(selectedSession.fraction_distance ? String(selectedSession.fraction_distance) : "");
     setFormIntensityPercent(selectedSession.intensity_percent ? String(selectedSession.intensity_percent) : "");
@@ -2140,14 +2209,15 @@ await supabase.auth.signOut();
       ? await uploadFile(gpxFile, "gpx")
       : editingSession?.gpx_url || null;
 
+    const cleanedDescription = cleanSessionDescription(formDescription);
     const payload = {
       title: formTitle.trim().charAt(0).toUpperCase() + formTitle.trim().slice(1),
-      type: formType,
+      type: formEventKind === "race" ? "Course" : formType,
       date: editingSession?.date || selectedDate,
       start_time: formStartTime,
       end_time: formEndTime,
       location: formLocation.trim(),
-      description: formDescription,
+      description: formEventKind === "race" ? `${RACE_DESCRIPTION_MARKER}\n${cleanedDescription}`.trim() : cleanedDescription,
       image_url: imageUrl,
       gpx_url: gpxUrl,
       created_by: user.id,
@@ -2367,6 +2437,9 @@ await supabase.auth.signOut();
   }
 
   function renderSessionCard(session: Session & { participationStatus?: ParticipationStatus }, compact = false) {
+    const sessionIsRace = isRaceSession(session);
+    const sessionProjection = raceProjectionFromVma(session, profileVma);
+
     return (
       <button
         key={session.id}
@@ -2374,13 +2447,15 @@ await supabase.auth.signOut();
           setSelectedSession(session);
           setActiveTab("calendar");
         }}
-        className={`session-card ${compact ? "compact" : ""}`}
+        className={`session-card ${sessionIsRace ? "race-card" : "training-card"} ${compact ? "compact" : ""}`}
+        style={sessionIsRace ? { borderLeft: `6px solid ${RACE_COLORS.border}`, background: RACE_COLORS.background } : undefined}
       >
         {session.image_url && <img className="session-thumb" src={session.image_url} alt="" />}
         <div className="session-card-content">
-          <strong>{session.title}</strong>
+          <strong>{sessionIsRace ? "🏁 " : ""}{session.title}</strong>
           <span>{formatDisplayDate(session.date)} • {session.start_time} - {session.end_time}</span>
-          <small>🏷️ {session.type || "Séance"}</small>
+          <small>{sessionIsRace ? "🏁 Course" : `🏷️ ${session.type || "Entraînement"}`}</small>
+          {sessionProjection && <small>🎯 Objectif estimé : {sessionProjection.range}</small>}
           {session.location && <small>📍 {session.location}</small>}
           {session.gpx_url && <small>🗺️ GPX disponible</small>}
           {session.participationStatus && (
@@ -2599,7 +2674,9 @@ if (isPasswordRecovery) {
                 {Array.from({ length: daysInMonth }, (_, index) => {
                   const day = index + 1;
                   const dateKey = formatDateKey(currentDate, day);
-                  const hasSession = sessionsByDate[dateKey];
+                  const dayInfo = sessionsByDate[dateKey];
+                  const hasSession = Boolean(dayInfo);
+                  const hasRace = Boolean(dayInfo?.hasRace);
                   const isSelected = selectedDate === dateKey;
 
                   return (
@@ -2610,7 +2687,8 @@ if (isPasswordRecovery) {
                         setSelectedDate(dateKey);
                         setSelectedSession(null);
                       }}
-                      className={`calendar-day ${hasSession ? "has-session" : ""} ${isSelected ? "selected" : ""}`}
+                      className={`calendar-day ${hasSession ? "has-session" : ""} ${hasRace ? "has-race" : ""} ${isSelected ? "selected" : ""}`}
+                      style={hasRace ? { background: RACE_COLORS.background, borderColor: RACE_COLORS.border, color: RACE_COLORS.text } : undefined}
                     >
                       {day}
                     </motion.button>
@@ -3618,16 +3696,42 @@ if (isPasswordRecovery) {
 
             <div className="create-card">
               <div className="form-row">
+                <label>Nature</label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  {EVENT_KINDS.map((kind) => (
+                    <button
+                      key={kind.value}
+                      type="button"
+                      className={formEventKind === kind.value ? "primary-btn" : "secondary-btn"}
+                      onClick={() => setFormEventKind(kind.value)}
+                      style={kind.value === "race" && formEventKind === "race" ? { background: RACE_COLORS.border, color: "white" } : undefined}
+                    >
+                      {kind.icon} {kind.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="form-row">
                 <label>Titre</label>
                 <input placeholder={'Ex : 8 x 400 m à 95% VMA ou 10 x 30"/30" à VMA'} value={formTitle} onChange={(e) => setFormTitle(e.target.value)} />
               </div>
 
-              <div className="form-row">
-                <label>Type</label>
-                <select value={formType} onChange={(e) => setFormType(e.target.value)}>
-                  {SESSION_TYPES.map((type) => <option key={type}>{type}</option>)}
-                </select>
-              </div>
+              {formEventKind === "training" && (
+                <div className="form-row">
+                  <label>Type d’entraînement</label>
+                  <select value={formType} onChange={(e) => setFormType(e.target.value)}>
+                    {SESSION_TYPES.map((type) => <option key={type}>{type}</option>)}
+                  </select>
+                </div>
+              )}
+
+              {formEventKind === "race" && (
+                <div className="form-row" style={{ borderLeft: `5px solid ${RACE_COLORS.border}`, background: RACE_COLORS.background, padding: 12, borderRadius: 16 }}>
+                  <label style={{ color: RACE_COLORS.text }}>Course</label>
+                  <small style={{ color: RACE_COLORS.text }}>Ajoute la distance dans le titre ou la description, par exemple “10 km”, “semi” ou “marathon”. Si tu ajoutes un lien d’inscription dans la description, il sera affiché en bouton.</small>
+                </div>
+              )}
 
               <div className="form-row">
                 <label>Lieu</label>
@@ -3636,7 +3740,7 @@ if (isPasswordRecovery) {
 
               <div className="form-row description-row">
                 <label>Description</label>
-                <textarea placeholder="Description, consignes, lien éventuel..." value={formDescription} onChange={(e) => setFormDescription(e.target.value)} />
+                <textarea placeholder={formEventKind === "race" ? "Description, horaire, organisation, covoiturage, lien d’inscription..." : "Description, consignes, lien éventuel..."} value={cleanSessionDescription(formDescription)} onChange={(e) => setFormDescription(e.target.value)} />
               </div>
 
               <div className="form-row">
@@ -3659,7 +3763,7 @@ if (isPasswordRecovery) {
                 <input type="file" accept=".gpx" onChange={(e) => setGpxFile(e.target.files?.[0] || null)} />
               </div>
 
-              <button className="primary-btn" onClick={handleSaveSession}>{isEditing ? "Modifier la séance" : "Créer la séance"}</button>
+              <button className="primary-btn" onClick={handleSaveSession}>{isEditing ? "Modifier" : formEventKind === "race" ? "Créer la course" : "Créer l’entraînement"}</button>
               <button className="close-floating-btn" onClick={() => setShowCreateForm(false)}>×</button>
             </div>
           </div>
@@ -3675,10 +3779,16 @@ if (isPasswordRecovery) {
 
               {selectedSession.image_url && <img src={selectedSession.image_url} alt={selectedSession.title} />}
 
-              <div className="detail-box">
-                <p>🏷️ {selectedSession.type || "Type non renseigné"}</p>
+              <div className="detail-box" style={isRaceSession(selectedSession) ? { borderLeft: `6px solid ${RACE_COLORS.border}`, background: RACE_COLORS.background } : undefined}>
+                <p>{isRaceSession(selectedSession) ? "🏁 Course" : `🏷️ ${selectedSession.type || "Entraînement"}`}</p>
                 <p>📍 {selectedSession.location || "Lieu non renseigné"}</p>
-                <p className="session-description">{selectedSession.description || "Aucune description"}</p>
+                <p className="session-description">{cleanSessionDescription(selectedSession.description) || "Aucune description"}</p>
+
+                {isRaceSession(selectedSession) && extractFirstUrl(selectedSession.description) && (
+                  <a className="primary-btn" href={extractFirstUrl(selectedSession.description) || "#"} target="_blank" rel="noreferrer" style={{ display: "inline-flex", marginTop: 10, background: RACE_COLORS.border, color: "white" }}>
+                    Ouvrir le lien d’inscription
+                  </a>
+                )}
 
                 {selectedSession.gpx_url && (
                   <div className="gpx-actions">
@@ -3727,6 +3837,17 @@ if (isPasswordRecovery) {
                   </button>
                 </div>
               </div>
+
+              {selectedRaceProjection && (
+                <div className="personal-goal-card selected-goal" style={{ borderLeft: `6px solid ${RACE_COLORS.border}` }}>
+                  <h3>🏁 Objectif estimé</h3>
+                  <p>Distance détectée : {selectedRaceProjection.distance}</p>
+                  <p className="goal-highlight">Objectif réaliste : {selectedRaceProjection.range}</p>
+                  {selectedRaceProjection.pace && <p>Allure repère : {formatPace(selectedRaceProjection.pace)}</p>}
+                  <p>Avec ta VMA et tes repères actuels, cette fourchette semble cohérente. Pars propre, reste patient, puis crois en toi sur la deuxième partie : tu as les moyens d’aller chercher une belle course.</p>
+                  <p className="goal-muted">Projection indicative : elle doit être ajustée selon le parcours, la météo, la fatigue et les sensations du jour.</p>
+                </div>
+              )}
 
               {personalGoals.length > 0 && (
                 <div className="personal-goals-wrapper">
