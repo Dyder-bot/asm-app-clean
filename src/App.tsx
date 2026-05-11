@@ -1,29 +1,3 @@
-
-
-
-
-
-const cleanTrainingGoals = <T extends { label: string }>(goals: T[]) => {
-  if (goals.length <= 1) return cleanTrainingGoals(goals);
-  return goals.filter((goal) => {
-    const genericTitles = [
-      "Seuil en côtes",
-      "Seuil en cote",
-      "Fractionné",
-      "Fractionne",
-      "Séance trail",
-      "Seance trail",
-      "Séance au choix",
-      "Seance au choix",
-      "Footing",
-      "Endurance",
-    ];
-
-    return !genericTitles.includes(goal.label);
-  });
-};
-
-
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useEffect, useMemo, useState } from "react";
@@ -1085,7 +1059,14 @@ function calculateTargetsFromText(
   profileVma: string,
   profileFcMax: string
 ): PersonalGoal[] {
-  const rawText = `${session.title || ""}\n${session.description || ""}`;
+  const descriptionText = (session.description || "").trim();
+  const titleText = (session.title || "").trim();
+
+  // Le titre sert souvent d'intitulé général (ex. "Seuil en côtes", "Fractionné").
+  // Si une description existe, on calcule les objectifs uniquement à partir de cette description
+  // afin d'éviter de créer une fausse séance supplémentaire à partir du titre.
+  const rawText = descriptionText || titleText;
+
   const lines = rawText
     .split(/\n+/)
     .map((line) => line.trim().replace(/^[-•]+\s*/, ""))
