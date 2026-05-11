@@ -185,7 +185,7 @@ const ASM_TRAINING_DICTIONARY: AsmDictionaryEntry[] = [
     keyword: "EF",
     label: "Endurance fondamentale",
     explanation: "Footing très facile, conversation possible, objectif de volume et de récupération.",
-    intensity: "≤ 75 % FC max",
+    intensity: "≤ 75 % FC de réserve",
   },
   {
     keyword: "RC",
@@ -208,7 +208,7 @@ const ASM_TRAINING_DICTIONARY: AsmDictionaryEntry[] = [
     keyword: "Seuil",
     label: "Travail au seuil",
     explanation: "Effort soutenu mais maîtrisé. En côte ou en trail, on privilégie la sensation et la fréquence cardiaque plutôt que l’allure route.",
-    intensity: "85-90 % FC max / proche SV2",
+    intensity: "85-90 % FC de réserve / proche SV2",
   },
   {
     keyword: "Tempo",
@@ -803,13 +803,13 @@ function formatFcRangeLabel(
 
   const labelByContext =
     context === "endurance"
-      ? `Repère cardio : rester sous ${maxPercent}% FC max`
+      ? `Repère cardio : rester sous ${maxPercent}% FC de réserve`
       : minPercent === null
-        ? `Repère cardio : rester sous ${maxPercent}% FC max`
-        : `Repère cardio : environ ${minPercent}–${maxPercent}% FC max`;
+        ? `Repère cardio : rester sous ${maxPercent}% FC de réserve`
+        : `Repère cardio : environ ${minPercent}–${maxPercent}% FC de réserve`;
 
   if (!fcMax) {
-    return `${labelByContext}. Ajoute ta FC max dans ton profil pour obtenir la cible personnalisée en bpm.`;
+    return `${labelByContext}. Ajoute ta FC de réserve dans ton profil pour obtenir la cible personnalisée en bpm.`;
   }
 
   if (minPercent === null || context === "endurance") {
@@ -825,7 +825,7 @@ function formatFcRangeLabel(
 function formatCombinedFcLabel(profileFcMax: string): string {
   const fcMax = Number(profileFcMax || 0);
   if (!fcMax) {
-    return "Repères cardio : SV2 ≈ 85–90% FC max / SV1 ≈ 75–85% FC max. Ajoute ta FC max dans ton profil pour obtenir les cibles en bpm.";
+    return "Repères cardio : SV2 ≈ 85–90% de FC de réserve / SV1 ≈ 75–85% FC de réserve. Ajoute ta FC de réserve dans ton profil pour obtenir les cibles en bpm.";
   }
 
   const sv2Min = Math.round(fcMax * 0.85);
@@ -833,7 +833,7 @@ function formatCombinedFcLabel(profileFcMax: string): string {
   const sv1Min = Math.round(fcMax * 0.75);
   const sv1Max = Math.round(fcMax * 0.85);
 
-  return `Repères cardio : SV2 ≈ 85–90% FC max (${sv2Min} à ${sv2Max} bpm) / SV1 ≈ 75–85% FC max (${sv1Min} à ${sv1Max} bpm). Adapter l’effort à la pente et au terrain.`;
+  return `Repères cardio : SV2 ≈ 85–90% de FC de réserve (${sv2Min} à ${sv2Max} bpm) / SV1 ≈ 75–85% FC de réserve (${sv1Min} à ${sv1Max} bpm). Adapter l’effort à la pente et au terrain.`;
 }
 
 function calculateTargetFromStructuredSession(
@@ -2966,8 +2966,9 @@ if (isPasswordRecovery) {
                 <p><strong>FC réserve</strong> = FC max − FC repos</p>
                 <p><strong>FC cible</strong> = (% × FC réserve) + FC repos</p>
                 <br />
-                <p><strong>SV1</strong> ≈ 70–75% FC réserve</p>
-                <p><strong>SV2 / seuil</strong> ≈ 85–90% FC réserve</p>
+                <p><strong>SV1</strong> ≈ haut de Zone 2</p>
+                <p><strong>SV2</strong> = haut de Zone 3 / début de Zone 4</p>
+                <p><strong>Seuil</strong> ≈ 85–90% de FC de réserve</p>
               </div>
             </div>
 
@@ -3779,7 +3780,7 @@ if (isPasswordRecovery) {
               </div>
 
               <div className="form-row">
-                <label>FC max</label>
+                <label>FC de réserve</label>
                 <input type="number" value={profileFcMax} onChange={(e) => setProfileFcMax(e.target.value)} placeholder="Ex : 190" />
               </div>
 
@@ -4090,7 +4091,7 @@ if (isPasswordRecovery) {
                         return personalGoal.distance ? `${personalGoal.distance} m` : "Allure 10 km";
                       }
                       if (personalGoal.type === "fc") {
-                        return `${personalGoal.percent}% FC max`;
+                        return `${personalGoal.percent}% FC de réserve`;
                       }
                       if (personalGoal.type === "effort") {
                         return personalGoal.title || "Effort";
@@ -4149,8 +4150,8 @@ if (isPasswordRecovery) {
 
                             {personalGoal.type === "fc" && (
                               <>
-                                <p>FC max utilisée : {personalGoal.fcMax} bpm</p>
-                                <p>Intensité : {personalGoal.percent}% FC max</p>
+                                <p>FC de réserve utilisée : {personalGoal.fcMax} bpm</p>
+                                <p>Intensité : {personalGoal.percent}% FC de réserve</p>
                                 <p>Fréquence cible : {personalGoal.targetFc} bpm</p>
                               </>
                             )}
