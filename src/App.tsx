@@ -1215,7 +1215,7 @@ export default function CalendarApp() {
 
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [showParticipantList, setShowParticipantList] = useState<ParticipationStatus | null>(null);
-  const [selectedGoalIndex, setSelectedGoalIndex] = useState(0);
+  const [selectedGoalIndex, setSelectedGoalIndex] = useState<number | null>(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
     return window.localStorage.getItem("asm-notifications") === "true";
   });
