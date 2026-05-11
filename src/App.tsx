@@ -1002,6 +1002,7 @@ export default function CalendarApp() {
   const [activeTab, setActiveTab] = useState<AppTab>("calendar");
   const [showMenu, setShowMenu] = useState(false);
   const [showAdminActions, setShowAdminActions] = useState(false);
+  const [showApprovedMembers, setShowApprovedMembers] = useState(false);
 
   const [user, setUser] = useState<any>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
@@ -3342,9 +3343,6 @@ if (isPasswordRecovery) {
         {activeTab === "admin" && isAdmin && (
           <section className="admin-screen">
             <h2>Demandes d’accès</h2>
-            <button className="admin-choice-btn selected" onClick={() => setActiveTab("importPlan")} style={{ marginBottom: 16 }}>
-              📥 Importer un plan d’entraînement
-            </button>
 
             {pendingProfiles.length === 0 ? (
               <p className="empty-message">Aucune demande en attente</p>
@@ -3419,51 +3417,61 @@ if (isPasswordRecovery) {
   Membres admis
 </h2>
 
+<button
+  className={`admin-choice-btn ${showApprovedMembers ? "selected" : ""}`}
+  onClick={() => setShowApprovedMembers((value) => !value)}
+  style={{ marginBottom: 12 }}
+>
+  {showApprovedMembers ? "Masquer les membres admis" : `Afficher les membres admis (${approvedProfiles.length})`}
+</button>
+
 <p className="empty-message">
   Admins : {approvedProfiles.filter((profile) => profile.is_admin).length}
 </p>
 
-            {approvedProfiles.length === 0 ? (
-              <p className="empty-message">Aucun membre admis</p>
-            ) : (
-              <div className="admin-list">
-                {approvedProfiles.map((profile) => (
-                  <div key={profile.id} className="admin-card">
-                    <div>
-                      <strong>{profile.firstname} {profile.lastname}</strong>
-                      <p>
-                        {profile.email || profile.pseudo || "Membre"}
-                        {profile.is_admin ? " • Admin" : ""}
-                      </p>
-                    </div>
+            {showApprovedMembers && (
+              approvedProfiles.length === 0 ? (
+                <p className="empty-message">Aucun membre admis</p>
+              ) : (
+                <div className="admin-list">
+                  {approvedProfiles.map((profile) => (
+                    <div key={profile.id} className="admin-card">
+                      <div>
+                        <strong>{profile.firstname} {profile.lastname}</strong>
+                        <p>
+                          {profile.email || profile.pseudo || "Membre"}
+                          {profile.is_admin ? " • Admin" : ""}
+                        </p>
+                      </div>
 
-                    <div className="admin-actions">
-                      {profile.is_admin ? (
-  <button
-    className="secondary-btn"
-    onClick={() => toggleAdminProfile(profile.id, false)}
-  >
-    Retirer admin
-  </button>
-) : (
-  <button
-    className="admin-choice-btn"
-    onClick={() => toggleAdminProfile(profile.id, true)}
-  >
-    Nommer admin
-  </button>
-)}
+                      <div className="admin-actions">
+                        {profile.is_admin ? (
+                          <button
+                            className="secondary-btn"
+                            onClick={() => toggleAdminProfile(profile.id, false)}
+                          >
+                            Retirer admin
+                          </button>
+                        ) : (
+                          <button
+                            className="admin-choice-btn"
+                            onClick={() => toggleAdminProfile(profile.id, true)}
+                          >
+                            Nommer admin
+                          </button>
+                        )}
 
-<button
-  className={`danger-btn ${deactivatingProfileId === profile.id ? "selected" : ""}`}
-  onClick={() => deactivateProfile(profile.id)}
->
-  Retirer l’accès
-</button>
+                        <button
+                          className={`danger-btn ${deactivatingProfileId === profile.id ? "selected" : ""}`}
+                          onClick={() => deactivateProfile(profile.id)}
+                        >
+                          Retirer l’accès
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )
             )}
           </section>
         )}
