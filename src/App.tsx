@@ -1,84 +1,10 @@
 
-const isGenericTrainingTitle = (title: string) => {
-  const normalized = normalizeText(title).trim();
-
-  if (!normalized) return true;
-
-  const genericExactTitles = [
-    "seuil en cotes",
-    "seuil en cote",
-    "seuil",
-    "fractionne",
-    "fractionné",
-    "vma",
-    "piste",
-    "cotes",
-    "cote",
-    "endurance",
-    "footing",
-    "sortie longue",
-    "seance au choix",
-    "séance au choix",
-    "seance trail",
-    "séance trail",
-    "entrainement",
-    "entraînement",
-  ];
-
-  if (genericExactTitles.includes(normalized)) return true;
-
-  const genericKeywords = [
-    "seuil",
-    "fractionne",
-    "fractionné",
-    "vma",
-    "footing",
-    "endurance",
-    "cotes",
-    "côtes",
-    "cote",
-    "côte",
-    "trail",
-  ];
-
-  const hasStructuredWorkout =
-    /\d+\s*[x×]\s*\d+/.test(normalized) ||
-    /\d+\s*['’]/.test(normalized) ||
-    /\d+\s*m/.test(normalized) ||
-    /\d+\s*km/.test(normalized);
-
-  return !hasStructuredWorkout && genericKeywords.some((word) => normalized.includes(normalizeText(word)));
-};
 
 
 
-const containsStructuredWorkout = (value: string) => {
-  const normalized = normalizeText(value || "");
-  return (
-    /\d+\s*[x×]\s*\d+/.test(normalized) ||
-    /\d+\s*['’]/.test(normalized) ||
-    /\d+\s*m/.test(normalized) ||
-    /\d+\s*km/.test(normalized)
-  );
-};
-
-const removeGenericTitleWhenDescriptionHasWorkout = <T extends { label: string }>(
-  goals: T[],
-  title: string,
-  description: string
-) => {
-  if (goals.length <= 1) return goals;
-  if (!containsStructuredWorkout(description)) return goals;
-
-  const normalizedTitle = normalizeText(title).trim();
-  return goals.filter((goal) => {
-    const normalizedLabel = normalizeText(goal.label).trim();
-    return normalizedLabel !== normalizedTitle && !isGenericTrainingTitle(goal.label);
-  });
-};
 
 const cleanTrainingGoals = <T extends { label: string }>(goals: T[]) => {
-  if (goals.length <= 1) return removeGenericTitleWhenDescriptionHasWorkout(cleanTrainingGoals(goals), session.title, session.description || "");
+  if (goals.length <= 1) return cleanTrainingGoals(goals);
   return goals.filter((goal) => !isGenericTrainingTitle(goal.label));
 };
 
@@ -1243,6 +1169,30 @@ function PrivacyPolicyBlock() {
     </div>
   );
 }
+
+const cleanTrainingGoals = <T extends { label: string }>(goals: T[]) => {
+  if (goals.length <= 1) return goals;
+
+  const genericTitles = [
+    "Seuil en côtes",
+    "Seuil en cote",
+    "Fractionné",
+    "Fractionne",
+    "Séance trail",
+    "Seance trail",
+    "Séance au choix",
+    "Seance au choix",
+    "Footing",
+    "Endurance",
+  ];
+
+  // Si plusieurs objectifs existent, on supprime les titres génériques
+  // qui ne sont pas de vraies séances détaillées.
+  return goals.filter((goal) => {
+    if (goals.length === 1) return true;
+    return !genericTitles.includes(goal.label);
+  });
+};
 
 export default function CalendarApp() {
   const [activeTab, setActiveTab] = useState<AppTab>("calendar");
