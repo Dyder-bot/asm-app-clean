@@ -4041,19 +4041,21 @@ if (isPasswordRecovery) {
                     return (
                       <div
                         key={`${raceProjection.kind}-${raceProjection.distance}-${raceGoalIndex}`}
-                        className={`personal-goal-card ${isRaceGoalOpen ? "selected-goal" : ""}`}
+                        className={`personal-goal-card ${selectedRaceProjections.length === 1 || isRaceGoalOpen ? "selected-goal" : ""}`}
                         style={{ borderLeft: `6px solid ${RACE_COLORS.border}` }}
                       >
-                        <button
-                          type="button"
-                          className={isRaceGoalOpen ? "goal-selected-btn" : "goal-unselected-btn"}
-                          onClick={() => setSelectedGoalIndex(isRaceGoalOpen ? null : raceGoalIndex)}
-                          style={{ marginBottom: isRaceGoalOpen ? 16 : 0 }}
-                        >
-                          🏁 {shortLabel}
-                        </button>
+                        {selectedRaceProjections.length > 1 && (
+                          <button
+                            type="button"
+                            className={isRaceGoalOpen ? "goal-selected-btn" : "goal-unselected-btn"}
+                            onClick={() => setSelectedGoalIndex(isRaceGoalOpen ? null : raceGoalIndex)}
+                            style={{ marginBottom: isRaceGoalOpen ? 16 : 0 }}
+                          >
+                            🏁 {shortLabel}
+                          </button>
+                        )}
 
-                        {((typeof raceGoals !== 'undefined' && raceGoals.length === 1) || isRaceGoalOpen) && (
+                        {(selectedRaceProjections.length === 1 || isRaceGoalOpen) && (
                           <>
                             {raceProjection.kind === "road" ? (
                               <>
@@ -4114,18 +4116,20 @@ if (isPasswordRecovery) {
                     return (
                       <div
                         key={`${personalGoal.type}-${goalIndex}`}
-                        className={`personal-goal-card ${isGoalOpen ? "selected-goal" : ""}`}
+                        className={`personal-goal-card ${personalGoals.length === 1 || isGoalOpen ? "selected-goal" : ""}`}
                       >
-                        <button
-                          type="button"
-                          className={isGoalOpen ? "goal-selected-btn" : "goal-unselected-btn"}
-                          onClick={() => setSelectedGoalIndex(isGoalOpen ? null : goalIndex)}
-                          style={{ marginBottom: isGoalOpen ? 16 : 0 }}
-                        >
-                          🎯 {goalLabel}
-                        </button>
+                        {personalGoals.length > 1 && (
+                          <button
+                            type="button"
+                            className={isGoalOpen ? "goal-selected-btn" : "goal-unselected-btn"}
+                            onClick={() => setSelectedGoalIndex(isGoalOpen ? null : goalIndex)}
+                            style={{ marginBottom: isGoalOpen ? 16 : 0 }}
+                          >
+                            🎯 {goalLabel}
+                          </button>
+                        )}
 
-                        {((typeof trainingGoals !== 'undefined' && trainingGoals.length === 1) || isGoalOpen) && (
+                        {(personalGoals.length === 1 || isGoalOpen) && (
                           <>
                             {personalGoal.type === "vma" && (
                               <>
