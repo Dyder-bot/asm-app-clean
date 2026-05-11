@@ -4053,7 +4053,7 @@ if (isPasswordRecovery) {
                           🏁 {shortLabel}
                         </button>
 
-                        {(raceGoals.length === 1 || isRaceGoalOpen) && (
+                        {((typeof raceGoals !== 'undefined' && raceGoals.length === 1) || isRaceGoalOpen) && (
                           <>
                             {raceProjection.kind === "road" ? (
                               <>
@@ -4125,7 +4125,7 @@ if (isPasswordRecovery) {
                           🎯 {goalLabel}
                         </button>
 
-                        {(trainingGoals.length === 1 || isGoalOpen) && (
+                        {((typeof trainingGoals !== 'undefined' && trainingGoals.length === 1) || isGoalOpen) && (
                           <>
                             {personalGoal.type === "vma" && (
                               <>
