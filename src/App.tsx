@@ -606,17 +606,29 @@ function isRaceSession(session?: Pick<Session, "type" | "title" | "description">
   return session.type === "Course" || text.includes(RACE_DESCRIPTION_MARKER.toLowerCase()) || text.includes("🏁 course");
 }
 
-function detectRaceDistance(session?: Pick<Session, "title" | "description" | "type"> | null) {
-  const text = `${session?.title || ""} ${session?.description || ""} ${session?.type || ""}`
+function normalizeRaceText(session?: Pick<Session, "title" | "description" | "type"> | null) {
+  return `${session?.title || ""} ${session?.description || ""} ${session?.type || ""}`
     .toLowerCase()
     .replace(/,/g, ".");
+}
+
+function detectRoadRaceDistances(session?: Pick<Session, "title" | "description" | "type"> | null) {
+  const text = normalizeRaceText(session);
+  const distances: string[] = [];
 
   // Routes uniquement : les bornes évitent de lire “2x25km” comme “5 km”.
-  if (/\bsemi\b|\b21\s*(?:\.\s*)?1?\s*km\b|\b21k\b/.test(text)) return "Semi-marathon";
-  if (/\bmarathon\b|\b42\s*(?:\.\s*)?195?\s*km\b|\b42k\b/.test(text)) return "Marathon";
-  if (/\b10\s*km\b|\b10k\b/.test(text)) return "10 km";
-  if (/\b5\s*km\b|\b5k\b/.test(text)) return "5 km";
-  return null;
+  if (/\b5\s*km\b|\b5k\b/.test(text)) distances.push("5 km");
+  if (/\b10\s*km\b|\b10k\b/.test(text)) distances.push("10 km");
+  if (/\bsemi\b|\b21\s*(?:\.\s*)?1?\s*km\b|\b21k\b/.test(text)) distances.push("Semi-marathon");
+
+  const textWithoutSemi = text.replace(/semi[-\s]?marathon/g, "");
+  if (/\bmarathon\b|\b42\s*(?:\.\s*)?195?\s*km\b|\b42k\b/.test(textWithoutSemi)) distances.push("Marathon");
+
+  return distances;
+}
+
+function detectRaceDistance(session?: Pick<Session, "title" | "description" | "type"> | null) {
+  return detectRoadRaceDistances(session)[0] || null;
 }
 
 function isTrailRace(session?: Pick<Session, "title" | "description" | "type"> | null) {
@@ -659,20 +671,7 @@ type RaceProjection =
       fcLabel: string;
     };
 
-function raceProjectionFromVma(session: Session | null, vmaValue: string, profileFcMax = ""): RaceProjection | null {
-  if (!session || !isRaceSession(session)) return null;
-
-  if (isTrailRace(session)) {
-    return {
-      kind: "trail",
-      distance: detectTrailRaceFormat(session),
-      fcLabel: formatFcRangeLabel(profileFcMax, 75, 85, "sv1"),
-    };
-  }
-
-  const distance = detectRaceDistance(session);
-  if (!distance) return null;
-
+function buildRoadRaceProjection(distance: string, vmaValue: string): RaceProjection | null {
   const theoretical = theoreticalChronoFromVma(distance, vmaValue);
   if (!theoretical) return null;
 
@@ -688,6 +687,26 @@ function raceProjectionFromVma(session: Session | null, vmaValue: string, profil
     range: formatChronoRange(theoretical.seconds, upperSeconds),
     pace,
   };
+}
+
+function raceProjectionsFromVma(session: Session | null, vmaValue: string, profileFcMax = ""): RaceProjection[] {
+  if (!session || !isRaceSession(session)) return [];
+
+  if (isTrailRace(session)) {
+    return [{
+      kind: "trail",
+      distance: detectTrailRaceFormat(session),
+      fcLabel: formatFcRangeLabel(profileFcMax, 75, 85, "sv1"),
+    }];
+  }
+
+  return detectRoadRaceDistances(session)
+    .map((distance) => buildRoadRaceProjection(distance, vmaValue))
+    .filter((projection): projection is RaceProjection => Boolean(projection));
+}
+
+function raceProjectionFromVma(session: Session | null, vmaValue: string, profileFcMax = ""): RaceProjection | null {
+  return raceProjectionsFromVma(session, vmaValue, profileFcMax)[0] || null;
 }
 
 function estimateVmaFromChronoDistance(distance: string, chronoSeconds: number) {
@@ -1439,7 +1458,7 @@ const [newPassword, setNewPassword] = useState("");
   const displayedParticipantList =
     showParticipantList === "present" ? presentParticipants : interestedParticipants;
 
-  const selectedRaceProjection = raceProjectionFromVma(selectedSession, profileVma, profileFcMax);
+  const selectedRaceProjections = raceProjectionsFromVma(selectedSession, profileVma, profileFcMax);
 
   const personalGoals = selectedSession && myParticipation === "present"
     ? (() => {
@@ -3892,26 +3911,43 @@ if (isPasswordRecovery) {
                 </div>
               </div>
 
-              {selectedRaceProjection && myParticipation === "present" && (
-                <div className="personal-goal-card selected-goal" style={{ borderLeft: `6px solid ${RACE_COLORS.border}` }}>
-                  <h3>{selectedRaceProjection.kind === "trail" ? "⛰️ Repère trail" : "🏁 Objectif estimé"}</h3>
-                  <p>Format détecté : {selectedRaceProjection.distance}</p>
+              {selectedRaceProjections.length > 0 && myParticipation === "present" && (
+                <div className="personal-goals-wrapper">
+                  {selectedRaceProjections.map((raceProjection, raceGoalIndex) => (
+                    <div
+                      key={`${raceProjection.kind}-${raceProjection.distance}-${raceGoalIndex}`}
+                      className={`personal-goal-card ${selectedGoalIndex === raceGoalIndex ? "selected-goal" : ""}`}
+                      style={{ borderLeft: `6px solid ${RACE_COLORS.border}` }}
+                    >
+                      <h3>{raceProjection.kind === "trail" ? "⛰️ Repère trail" : `🏁 Objectif ${raceGoalIndex + 1}`}</h3>
+                      <p>Format détecté : {raceProjection.distance}</p>
 
-                  {selectedRaceProjection.kind === "road" ? (
-                    <>
-                      <p className="goal-highlight">Objectif réaliste : {selectedRaceProjection.range}</p>
-                      {selectedRaceProjection.pace && <p>Allure repère : {formatPace(selectedRaceProjection.pace)}</p>}
-                      <p>Avec ta VMA et tes repères actuels, cette fourchette semble cohérente. Pars propre, reste patient, puis crois en toi sur la deuxième partie : tu as les moyens d’aller chercher une belle course.</p>
-                      <p className="goal-muted">Projection indicative : elle doit être ajustée selon le parcours, la météo, la fatigue et les sensations du jour.</p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="goal-highlight">Objectif : gérer l’effort, pas l’allure.</p>
-                      <p>{selectedRaceProjection.fcLabel}</p>
-                      <p>Sur trail, le chrono dépend surtout du terrain, du dénivelé, de la météo et de la gestion. Reste facile dans les montées, relance proprement quand le terrain le permet, et garde de l’énergie pour finir fort.</p>
-                      <p className="goal-muted">Repère indicatif : en trail, l’allure au kilomètre n’est pas une cible fiable. La fréquence cardiaque et les sensations doivent rester prioritaires.</p>
-                    </>
-                  )}
+                      {raceProjection.kind === "road" ? (
+                        <>
+                          <p className="goal-highlight">Objectif réaliste : {raceProjection.range}</p>
+                          {raceProjection.pace && <p>Allure repère : {formatPace(raceProjection.pace)}</p>}
+                          <p>Avec ta VMA et tes repères actuels, cette fourchette semble cohérente. Choisis la distance que tu prépares, pars propre, reste patient, puis crois en toi : tu as les moyens d’aller chercher une belle course.</p>
+                          <p className="goal-muted">Projection indicative : elle doit être ajustée selon le parcours, la météo, la fatigue et les sensations du jour.</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="goal-highlight">Objectif : gérer l’effort, pas l’allure.</p>
+                          <p>{raceProjection.fcLabel}</p>
+                          <p>Sur trail, le chrono dépend surtout du terrain, du dénivelé, de la météo et de la gestion. Reste facile dans les montées, relance proprement quand le terrain le permet, et garde de l’énergie pour finir fort.</p>
+                          <p className="goal-muted">Repère indicatif : en trail, l’allure au kilomètre n’est pas une cible fiable. La fréquence cardiaque et les sensations doivent rester prioritaires.</p>
+                        </>
+                      )}
+
+                      {selectedRaceProjections.length > 1 && (
+                        <button
+                          className={selectedGoalIndex === raceGoalIndex ? "goal-selected-btn" : "goal-unselected-btn"}
+                          onClick={() => setSelectedGoalIndex(raceGoalIndex)}
+                        >
+                          {selectedGoalIndex === raceGoalIndex ? "Objectif sélectionné" : "Choisir cet objectif"}
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
 
