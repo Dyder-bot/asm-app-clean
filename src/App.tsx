@@ -72,6 +72,19 @@ type MemberProfile = {
 };
 
 
+type AccountDeletionRequest = {
+  id: string;
+  user_id: string;
+  email?: string | null;
+  firstname?: string | null;
+  lastname?: string | null;
+  reason?: string | null;
+  status?: string | null;
+  created_at?: string | null;
+  processed_at?: string | null;
+};
+
+
 type PersonalChrono = {
   id: string;
   distance: string;
@@ -997,6 +1010,9 @@ export default function CalendarApp() {
   const [isActive, setIsActive] = useState(true);
   const [pendingProfiles, setPendingProfiles] = useState<MemberProfile[]>([]);
   const [approvedProfiles, setApprovedProfiles] = useState<MemberProfile[]>([]);
+  const [deletionRequests, setDeletionRequests] = useState<AccountDeletionRequest[]>([]);
+  const [deletionRequestSent, setDeletionRequestSent] = useState(false);
+  const [sendingDeletionRequest, setSendingDeletionRequest] = useState(false);
   const [approvingProfileId, setApprovingProfileId] = useState<string | null>(null);
   const [approvingAdminProfileId, setApprovingAdminProfileId] = useState<string | null>(null);
   const [deactivatingProfileId, setDeactivatingProfileId] = useState<string | null>(null);
@@ -1484,9 +1500,19 @@ const [newPassword, setNewPassword] = useState("");
   setPrivacyAccepted(privacyData?.privacy_accepted === true);
   setPrivacyAcceptedAt(privacyData?.privacy_accepted_at || null);
 
+  const { data: existingDeletionRequest } = await supabase
+    .from("account_deletion_requests")
+    .select("id, status")
+    .eq("user_id", user.id)
+    .eq("status", "pending")
+    .maybeSingle();
+
+  setDeletionRequestSent(Boolean(existingDeletionRequest));
+
   if (data.is_admin === true) {
     await fetchPendingProfiles();
     await fetchApprovedProfiles();
+    await fetchDeletionRequests(true);
   }
 
   setProfileLoaded(true);
@@ -1541,9 +1567,28 @@ const [newPassword, setNewPassword] = useState("");
     setApprovedProfiles(sortedProfiles as MemberProfile[]);
   }
 
+  async function fetchDeletionRequests(forceAdmin = false) {
+    if (!forceAdmin && !isAdmin) return;
+
+    const { data, error } = await supabase
+      .from("account_deletion_requests")
+      .select("id, user_id, email, firstname, lastname, reason, status, created_at, processed_at")
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Erreur chargement suppressions :", error.message);
+      setDeletionRequests([]);
+      return;
+    }
+
+    setDeletionRequests((data || []) as AccountDeletionRequest[]);
+  }
+
   async function refreshAdminLists() {
     await fetchPendingProfiles();
     await fetchApprovedProfiles();
+    await fetchDeletionRequests();
   }
 
   async function approveProfile(profileId: string) {
@@ -1693,6 +1738,64 @@ async function toggleAdminProfile(profileId: string, makeAdmin: boolean) {
     setPrivacyAcceptedAt(privacyDate);
 
     alert("Profil enregistré");
+  }
+
+  async function requestAccountDeletion() {
+    if (!user || sendingDeletionRequest || deletionRequestSent) return;
+
+    const confirmRequest = window.confirm(
+      "Confirmer la demande de suppression de ton compte ? Un administrateur du club traitera ensuite la demande."
+    );
+
+    if (!confirmRequest) return;
+
+    setSendingDeletionRequest(true);
+
+    const { error } = await supabase
+      .from("account_deletion_requests")
+      .insert({
+        user_id: user.id,
+        email: user.email || email || null,
+        firstname: firstname || null,
+        lastname: lastname || null,
+        reason: "Demande envoyée depuis l’application",
+        status: "pending",
+      });
+
+    setSendingDeletionRequest(false);
+
+    if (error) {
+      alert("La demande n’a pas pu être envoyée : " + error.message);
+      return;
+    }
+
+    setDeletionRequestSent(true);
+    alert("Ta demande de suppression a bien été envoyée au club.");
+  }
+
+  async function markDeletionRequestProcessed(requestId: string) {
+    if (!isAdmin) return;
+
+    const confirmDone = window.confirm(
+      "Marquer cette demande comme traitée ? À faire seulement après avoir supprimé ou anonymisé le compte concerné dans Supabase."
+    );
+
+    if (!confirmDone) return;
+
+    const { error } = await supabase
+      .from("account_deletion_requests")
+      .update({
+        status: "processed",
+        processed_at: new Date().toISOString(),
+      })
+      .eq("id", requestId);
+
+    if (error) {
+      alert("Erreur mise à jour demande : " + error.message);
+      return;
+    }
+
+    await fetchDeletionRequests();
   }
 
   async function fetchSessions() {
@@ -1877,6 +1980,7 @@ await supabase.auth.signOut();
     setShowMenu(false);
     setIsApproved(false);
     setIsActive(true);
+    setDeletionRequestSent(false);
     setProfileLoaded(true);
   }
 
@@ -2443,7 +2547,7 @@ if (isPasswordRecovery) {
                 refreshAdminLists();
               }}
             >
-              ✅ Demandes d’accès{pendingProfiles.length > 0 ? ` (${pendingProfiles.length})` : ""}
+              ✅ Demandes d’accès{pendingProfiles.length + deletionRequests.length > 0 ? ` (${pendingProfiles.length + deletionRequests.length})` : ""}
             </button>
           )}
 
@@ -3281,6 +3385,37 @@ if (isPasswordRecovery) {
             )}
 
            <h2 className="admin-section-title">
+  Demandes de suppression de compte
+</h2>
+
+            {deletionRequests.length === 0 ? (
+              <p className="empty-message">Aucune demande de suppression en attente</p>
+            ) : (
+              <div className="admin-list">
+                {deletionRequests.map((request) => (
+                  <div key={request.id} className="admin-card">
+                    <div>
+                      <strong>{request.firstname || ""} {request.lastname || ""}</strong>
+                      <p>
+                        {request.email || "Compte sans email"}
+                        {request.created_at ? ` • demandé le ${new Date(request.created_at).toLocaleDateString("fr-FR")}` : ""}
+                      </p>
+                    </div>
+
+                    <div className="admin-actions">
+                      <button
+                        className="danger-btn"
+                        onClick={() => markDeletionRequestProcessed(request.id)}
+                      >
+                        Marquer traité
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+           <h2 className="admin-section-title">
   Membres admis
 </h2>
 
@@ -3439,6 +3574,26 @@ if (isPasswordRecovery) {
                   {showPrivacyPolicy ? "Masquer la politique" : "Lire la politique de confidentialité"}
                 </button>
                 {showPrivacyPolicy && <PrivacyPolicyBlock />}
+              </div>
+
+              <div className="personal-goal-card">
+                <h3>Suppression du compte</h3>
+                <p>
+                  Tu peux demander la suppression de ton compte et des données associées.
+                  Un administrateur du club traitera la demande.
+                </p>
+                {deletionRequestSent ? (
+                  <p className="empty-message">Demande de suppression envoyée. Elle est en attente de traitement.</p>
+                ) : (
+                  <button
+                    type="button"
+                    className="danger-btn"
+                    onClick={requestAccountDeletion}
+                    disabled={sendingDeletionRequest}
+                  >
+                    {sendingDeletionRequest ? "Envoi en cours..." : "Demander la suppression de mon compte"}
+                  </button>
+                )}
               </div>
 
               <button className="primary-btn" onClick={saveMyProfile}>Enregistrer le profil</button>
