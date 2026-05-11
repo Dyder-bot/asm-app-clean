@@ -1,3 +1,88 @@
+
+const isGenericTrainingTitle = (title: string) => {
+  const normalized = normalizeText(title).trim();
+
+  if (!normalized) return true;
+
+  const genericExactTitles = [
+    "seuil en cotes",
+    "seuil en cote",
+    "seuil",
+    "fractionne",
+    "fractionné",
+    "vma",
+    "piste",
+    "cotes",
+    "cote",
+    "endurance",
+    "footing",
+    "sortie longue",
+    "seance au choix",
+    "séance au choix",
+    "seance trail",
+    "séance trail",
+    "entrainement",
+    "entraînement",
+  ];
+
+  if (genericExactTitles.includes(normalized)) return true;
+
+  const genericKeywords = [
+    "seuil",
+    "fractionne",
+    "fractionné",
+    "vma",
+    "footing",
+    "endurance",
+    "cotes",
+    "côtes",
+    "cote",
+    "côte",
+    "trail",
+  ];
+
+  const hasStructuredWorkout =
+    /\d+\s*[x×]\s*\d+/.test(normalized) ||
+    /\d+\s*['’]/.test(normalized) ||
+    /\d+\s*m/.test(normalized) ||
+    /\d+\s*km/.test(normalized);
+
+  return !hasStructuredWorkout && genericKeywords.some((word) => normalized.includes(normalizeText(word)));
+};
+
+
+
+const containsStructuredWorkout = (value: string) => {
+  const normalized = normalizeText(value || "");
+  return (
+    /\d+\s*[x×]\s*\d+/.test(normalized) ||
+    /\d+\s*['’]/.test(normalized) ||
+    /\d+\s*m/.test(normalized) ||
+    /\d+\s*km/.test(normalized)
+  );
+};
+
+const removeGenericTitleWhenDescriptionHasWorkout = <T extends { label: string }>(
+  goals: T[],
+  title: string,
+  description: string
+) => {
+  if (goals.length <= 1) return goals;
+  if (!containsStructuredWorkout(description)) return goals;
+
+  const normalizedTitle = normalizeText(title).trim();
+  return goals.filter((goal) => {
+    const normalizedLabel = normalizeText(goal.label).trim();
+    return normalizedLabel !== normalizedTitle && !isGenericTrainingTitle(goal.label);
+  });
+};
+
+const cleanTrainingGoals = <T extends { label: string }>(goals: T[]) => {
+  if (goals.length <= 1) return removeGenericTitleWhenDescriptionHasWorkout(cleanTrainingGoals(goals), session.title, session.description || "");
+  return goals.filter((goal) => !isGenericTrainingTitle(goal.label));
+};
+
+
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useEffect, useMemo, useState } from "react";
