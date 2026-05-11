@@ -5,7 +5,22 @@
 
 const cleanTrainingGoals = <T extends { label: string }>(goals: T[]) => {
   if (goals.length <= 1) return cleanTrainingGoals(goals);
-  return goals.filter((goal) => !isGenericTrainingTitle(goal.label));
+  return goals.filter((goal) => {
+    const genericTitles = [
+      "Seuil en côtes",
+      "Seuil en cote",
+      "Fractionné",
+      "Fractionne",
+      "Séance trail",
+      "Seance trail",
+      "Séance au choix",
+      "Seance au choix",
+      "Footing",
+      "Endurance",
+    ];
+
+    return !genericTitles.includes(goal.label);
+  });
 };
 
 
@@ -1170,29 +1185,7 @@ function PrivacyPolicyBlock() {
   );
 }
 
-const cleanTrainingGoals = <T extends { label: string }>(goals: T[]) => {
-  if (goals.length <= 1) return goals;
 
-  const genericTitles = [
-    "Seuil en côtes",
-    "Seuil en cote",
-    "Fractionné",
-    "Fractionne",
-    "Séance trail",
-    "Seance trail",
-    "Séance au choix",
-    "Seance au choix",
-    "Footing",
-    "Endurance",
-  ];
-
-  // Si plusieurs objectifs existent, on supprime les titres génériques
-  // qui ne sont pas de vraies séances détaillées.
-  return goals.filter((goal) => {
-    if (goals.length === 1) return true;
-    return !genericTitles.includes(goal.label);
-  });
-};
 
 export default function CalendarApp() {
   const [activeTab, setActiveTab] = useState<AppTab>("calendar");
