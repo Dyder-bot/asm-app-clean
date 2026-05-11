@@ -28,7 +28,7 @@ const SESSION_TYPES = [
 
 const WEEK_DAYS = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
 
-type AppTab = "calendar" | "mySessions" | "chronos" | "profile" | "notifications" | "admin";
+type AppTab = "calendar" | "mySessions" | "chronos" | "profile" | "notifications" | "admin" | "importPlan";
 type ParticipationStatus = "present" | "interested";
 type WorkoutMode = "" | "vma" | "fc" | "seuil" | "10km" | "allure";
 
@@ -127,6 +127,283 @@ type PersonalGoal =
       type: "allure";
       pace: number;
     };
+
+
+
+type ImportedPlanSession = {
+  id: string;
+  date: string;
+  dayLabel: string;
+  title: string;
+  description: string;
+  type: string;
+  start_time: string;
+  end_time: string;
+  location: string;
+  confidence: "auto" | "manual";
+  notes: string[];
+};
+
+type AsmDictionaryEntry = {
+  keyword: string;
+  label: string;
+  explanation: string;
+  sportHint?: string;
+  intensity?: string;
+};
+
+const ASM_TRAINING_DICTIONARY: AsmDictionaryEntry[] = [
+  {
+    keyword: "EF",
+    label: "Endurance fondamentale",
+    explanation: "Footing très facile, conversation possible, objectif de volume et de récupération.",
+    intensity: "≤ 75 % FC max",
+  },
+  {
+    keyword: "RC",
+    label: "Retour au calme",
+    explanation: "Fin de séance très souple pour faire redescendre l’intensité.",
+  },
+  {
+    keyword: "SV1",
+    label: "Seuil ventilatoire 1",
+    explanation: "Endurance active contrôlée, effort confortable mais soutenu.",
+    intensity: "75-82 % VMA environ",
+  },
+  {
+    keyword: "SV2",
+    label: "Seuil ventilatoire 2",
+    explanation: "Seuil haut, effort difficile mais maîtrisé, proche de l’allure soutenue.",
+    intensity: "88-92 % VMA environ",
+  },
+  {
+    keyword: "Seuil",
+    label: "Travail au seuil",
+    explanation: "Effort soutenu mais maîtrisé. En côte ou en trail, on privilégie la sensation et la fréquence cardiaque plutôt que l’allure route.",
+    intensity: "85-90 % FC max / proche SV2",
+  },
+  {
+    keyword: "Tempo",
+    label: "Tempo / allure course",
+    explanation: "Allure soutenue liée à l’objectif préparé. Sur trail, elle dépend du terrain et du dénivelé.",
+  },
+  {
+    keyword: "VMA",
+    label: "VMA",
+    explanation: "Travail court et intense pour développer la vitesse maximale aérobie.",
+  },
+  {
+    keyword: "Fartlek",
+    label: "Fartlek",
+    explanation: "Variations d’allure sur terrain naturel, avec relances, bosses ou changements de rythme.",
+    sportHint: "Trail",
+  },
+  {
+    keyword: "Côtes",
+    label: "Côtes",
+    explanation: "Travail de puissance, d’appuis et d’intensité en montée.",
+    sportHint: "Trail",
+  },
+  {
+    keyword: "Descente active",
+    label: "Descente active",
+    explanation: "Récupération dynamique en descente : on reste relâché, propre techniquement, sans se laisser complètement aller.",
+    sportHint: "Trail",
+  },
+  {
+    keyword: "Descente rapide",
+    label: "Descente rapide trail",
+    explanation: "Travail technique de descente : vitesse de pied, trajectoires, relance, engagement maîtrisé et résistance musculaire des quadriceps.",
+    sportHint: "Trail",
+  },
+  {
+    keyword: "JERK",
+    label: "JERK trail",
+    explanation: "Circuit musculaire spécifique trail : chaise, sauts, bosse, descente et relance. Objectif : force, explosivité et résistance sous fatigue.",
+    sportHint: "Trail",
+  },
+  {
+    keyword: "Préfatigue",
+    label: "Préfatigue",
+    explanation: "Séance qui prépare à produire un effort spécifique avec de la fatigue déjà présente.",
+    sportHint: "Trail",
+  },
+  {
+    keyword: "Déblocage",
+    label: "Déblocage",
+    explanation: "Petite activation légère avant compétition pour réveiller les jambes sans fatiguer.",
+  },
+  {
+    keyword: "Très facile",
+    label: "Très facile",
+    explanation: "Allure volontairement confortable. Le but est de récupérer ou d’ajouter du volume sans fatigue excessive.",
+  },
+  {
+    keyword: "Actif",
+    label: "Actif",
+    explanation: "Effort plus engagé qu’un footing facile, mais qui doit rester contrôlé.",
+  },
+];
+
+function normalizeImportedText(value: string) {
+  return value
+    .replace(/\r/g, "\n")
+    .replace(/[’‘]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .trim();
+}
+
+function addDaysToDate(dateKey: string, days: number) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const date = new Date(year, month - 1, day + days);
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function parseFrenchDateToKey(value: string, fallbackYear: number) {
+  const match = value.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/);
+  if (!match) return null;
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = match[3] ? Number(match[3].length === 2 ? `20${match[3]}` : match[3]) : fallbackYear;
+  if (!day || !month || !year) return null;
+  return `${year}-${pad(month)}-${pad(day)}`;
+}
+
+function isTrackDistanceSession(text: string) {
+  const normalized = text.toLowerCase().replace(/\s+/g, " ");
+  // Détection des fractions courtes typiques piste : 100 m à 1000 m.
+  // Exemples reconnus : 6x200, 10 x 400 m, 5*1000m, 8 × 800.
+  return /(?:^|[^0-9])(?:\d+\s*[x*×]\s*)?(?:1000|[1-8]00)\s*m/.test(normalized);
+}
+
+function inferPlanSport(text: string, defaultSport: string) {
+  const lower = text.toLowerCase();
+  // Chaque séance est analysée indépendamment : le sport du plan sert seulement de valeur par défaut.
+  if (isTrackDistanceSession(text) || /\bpiste\b/.test(lower)) return "Piste";
+  if (/vélo|velo/.test(lower)) return "Vélo";
+  if (/trail|côte|cotes|bosse|descente|d\+|montan|parcours technique|relances/.test(lower)) return "Trail";
+  if (/footing|route|10\s*km|semi|marathon|vma|seuil|tempo|fartlek|endurance/.test(lower)) return "Course à pied";
+  return defaultSport || "Course à pied";
+}
+
+function defaultLocationForImportedSession(description: string) {
+  return isTrackDistanceSession(description) ? "Stade André-Lavie, Pau" : "À votre convenance";
+}
+
+function buildImportedSessionTitle(description: string) {
+  const cleaned = description.trim();
+  const label = cleaned.split(":")[0]?.trim();
+  if (label && label.length <= 28 && /[a-zA-ZÀ-ÿ]/.test(label)) return label.charAt(0).toUpperCase() + label.slice(1);
+  if (/footing/i.test(cleaned)) return "Footing";
+  if (/sortie trail/i.test(cleaned)) return "Sortie trail";
+  if (/seuil/i.test(cleaned)) return "Seuil";
+  if (/vma|30\"\s*\/\s*30\"|1'\s*\/\s*1'/i.test(cleaned)) return "VMA";
+  if (/fartlek/i.test(cleaned)) return "Fartlek";
+  if (/côte|cotes|bosse/i.test(cleaned)) return "Côtes";
+  if (/tempo/i.test(cleaned)) return "Tempo";
+  if (/jerk/i.test(cleaned)) return "JERK";
+  return "Séance";
+}
+
+function dictionaryNotesForSession(description: string) {
+  const lower = description.toLowerCase();
+  return ASM_TRAINING_DICTIONARY
+    .filter((entry) => lower.includes(entry.keyword.toLowerCase()))
+    .map((entry) => `${entry.label} : ${entry.explanation}`);
+}
+
+function parseImportedPlanText(rawText: string, defaultSport: string, fallbackYear: number) {
+  const text = normalizeImportedText(rawText);
+  if (!text) return [] as ImportedPlanSession[];
+
+  const lines = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^(semaines|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)$/i.test(line))
+    .filter((line) => !/^(developpement|développement|assimilation|specifique|spécifique|affûtage|affutage|course)$/i.test(line));
+
+  const dayOffsets: Record<string, number> = {
+    lundi: 0,
+    mardi: 1,
+    mercredi: 2,
+    jeudi: 3,
+    vendredi: 4,
+    samedi: 5,
+    dimanche: 6,
+  };
+
+  let currentWeekStart: string | null = null;
+  let rollingIndex = 0;
+  const results: ImportedPlanSession[] = [];
+  const seen = new Set<string>();
+
+  const pushSession = (description: string, date: string, dayLabel: string) => {
+    const cleaned = description.replace(/\s+/g, " ").trim();
+    if (!cleaned || /^repos$/i.test(cleaned)) return;
+    const key = `${date}-${cleaned.toLowerCase()}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    const sport = inferPlanSport(cleaned, defaultSport);
+    const title = buildImportedSessionTitle(cleaned);
+    results.push({
+      id: `${Date.now()}-${results.length}-${Math.random().toString(16).slice(2)}`,
+      date,
+      dayLabel,
+      title,
+      description: cleaned,
+      type: sport,
+      start_time: sport === "Trail" ? "09:00" : "18:30",
+      end_time: "",
+      location: defaultLocationForImportedSession(cleaned),
+      confidence: sport === defaultSport ? "manual" : "auto",
+      notes: dictionaryNotesForSession(cleaned),
+    });
+  };
+
+  for (const line of lines) {
+    const weekMatch = line.match(/DU\s+(\d{1,2}\/\d{1,2})(?:\s+AU\s+\d{1,2}\/\d{1,2})?/i);
+    if (weekMatch) {
+      currentWeekStart = parseFrenchDateToKey(weekMatch[1], fallbackYear);
+      rollingIndex = 0;
+      continue;
+    }
+
+    const explicitDate = parseFrenchDateToKey(line, fallbackYear);
+    const dayMatch = line.match(/^(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\s*[:\-]?\s*(.+)$/i);
+    if (dayMatch && currentWeekStart) {
+      const day = dayMatch[1].toLowerCase();
+      pushSession(dayMatch[2], addDaysToDate(currentWeekStart, dayOffsets[day] ?? 0), day);
+      continue;
+    }
+
+    const looksLikeSession = /(:|\d+\s*[x*]\s*\d+|\d+'|\d+\"|footing|sortie|trail|seuil|vma|tempo|fartlek|jerk|préfatigue|prefatigue|côte|cotes|déblocage|deblocage|endurance)/i.test(line);
+    const ignored = /^montan'aspe|^moins de|^37km|^au\s+\d/i.test(line.toLowerCase());
+    if (!looksLikeSession || ignored || /^repos$/i.test(line)) continue;
+
+    let date = explicitDate;
+    let dayLabel = "à vérifier";
+    if (!date && currentWeekStart) {
+      const preferredOffsets = [1, 2, 3, 5, 6];
+      const offset = preferredOffsets[Math.min(rollingIndex, preferredOffsets.length - 1)] ?? rollingIndex;
+      date = addDaysToDate(currentWeekStart, offset);
+      dayLabel = Object.keys(dayOffsets).find((key) => dayOffsets[key] === offset) || "à vérifier";
+      rollingIndex += 1;
+    }
+
+    if (!date) {
+      date = new Date().toISOString().slice(0, 10);
+      dayLabel = "date à vérifier";
+    }
+
+    pushSession(line, date, dayLabel);
+  }
+
+  return results;
+}
 
 function pad(value: number) {
   return String(value).padStart(2, "0");
@@ -341,6 +618,50 @@ function chronoMotivationMessages(options: {
 }
 
 
+
+function formatFcRangeLabel(
+  profileFcMax: string,
+  minPercent: number | null,
+  maxPercent: number,
+  context: "endurance" | "sv1" | "seuil" | "custom" = "custom"
+): string {
+  const fcMax = Number(profileFcMax || 0);
+
+  const labelByContext =
+    context === "endurance"
+      ? `Repère cardio : rester sous ${maxPercent}% FC max`
+      : minPercent === null
+        ? `Repère cardio : rester sous ${maxPercent}% FC max`
+        : `Repère cardio : environ ${minPercent}–${maxPercent}% FC max`;
+
+  if (!fcMax) {
+    return `${labelByContext}. Ajoute ta FC max dans ton profil pour obtenir la cible personnalisée en bpm.`;
+  }
+
+  if (minPercent === null || context === "endurance") {
+    const maxBpm = Math.round((fcMax * maxPercent) / 100);
+    return `${labelByContext} ≈ moins de ${maxBpm} bpm.`;
+  }
+
+  const minBpm = Math.round((fcMax * minPercent) / 100);
+  const maxBpm = Math.round((fcMax * maxPercent) / 100);
+  return `${labelByContext} ≈ ${minBpm} à ${maxBpm} bpm.`;
+}
+
+function formatCombinedFcLabel(profileFcMax: string): string {
+  const fcMax = Number(profileFcMax || 0);
+  if (!fcMax) {
+    return "Repères cardio : SV2 ≈ 85–90% FC max / SV1 ≈ 75–85% FC max. Ajoute ta FC max dans ton profil pour obtenir les cibles en bpm.";
+  }
+
+  const sv2Min = Math.round(fcMax * 0.85);
+  const sv2Max = Math.round(fcMax * 0.9);
+  const sv1Min = Math.round(fcMax * 0.75);
+  const sv1Max = Math.round(fcMax * 0.85);
+
+  return `Repères cardio : SV2 ≈ 85–90% FC max (${sv2Min} à ${sv2Max} bpm) / SV1 ≈ 75–85% FC max (${sv1Min} à ${sv1Max} bpm). Adapter l’effort à la pente et au terrain.`;
+}
+
 function calculateTargetFromStructuredSession(
   session: Session,
   profileVma: string,
@@ -418,7 +739,9 @@ function calculateTargetFromText(
       detail: isTrailSession
         ? "Footing trail en aisance respiratoire : effort facile, régulier, sans chercher l’allure route."
         : "Footing en endurance fondamentale : effort facile, tu dois pouvoir parler en courant.",
-      fcLabel: isTrailSession ? "Repère : environ 65–75% FC max, à adapter au terrain." : "Repère : environ 65–75% FC max / zone SV1 basse.",
+      fcLabel: isTrailSession
+        ? formatFcRangeLabel(profileFcMax, null, 75, "endurance") + " À adapter au terrain."
+        : formatFcRangeLabel(profileFcMax, null, 75, "endurance"),
       surface: isTrailSession ? "trail" : "route",
     };
   }
@@ -432,7 +755,7 @@ function calculateTargetFromText(
       type: "effort",
       title: `${repetitions} × (${sv2Minutes}' SV2 + ${sv1Minutes}' SV1) en côte`,
       detail: "Alternance en côte : 4 minutes proches SV2 puis 2 minutes proches SV1. L’objectif est de rester maîtrisé, sans exploser sur les fractions SV2.",
-      fcLabel: "Repères : SV2 ≈ 85–90% FC max / SV1 ≈ 75–80% FC max. Adapter l’effort à la pente et au terrain.",
+      fcLabel: formatCombinedFcLabel(profileFcMax),
       surface: "trail",
     };
   }
@@ -448,7 +771,7 @@ function calculateTargetFromText(
       detail: hasActiveDownhill
         ? "Travail au seuil en côte avec descente active : monter à effort contrôlé, puis redescendre en récupération active sans se mettre dans le rouge."
         : "Travail au seuil en côte/trail : garder un effort contrôlé, sans chercher l’allure route.",
-      fcLabel: "Repère : environ 85–90% FC max, proche SV2. La pente prime sur l’allure.",
+      fcLabel: formatFcRangeLabel(profileFcMax, 85, 90, "seuil") + " Proche SV2. La pente prime sur l’allure.",
       surface: "trail",
     };
   }
@@ -499,7 +822,7 @@ function calculateTargetFromText(
       detail: isTrailSession
         ? "Travail au seuil en terrain variable : privilégier l’effort et la respiration, sans chercher une allure fixe."
         : "Travail au seuil court : rester contrôlé, régulier, sans partir trop vite.",
-      fcLabel: isTrailSession ? "Repère : zone SV2 / environ 85–90% FC max" : "Repère : environ 85–90% VMA ou zone SV2",
+      fcLabel: isTrailSession ? formatFcRangeLabel(profileFcMax, 85, 90, "seuil") + " Zone SV2." : "Repère : environ 85–90% VMA ou zone SV2",
       surface: isTrailSession ? "trail" : "route",
     };
   }
@@ -603,7 +926,7 @@ function calculateTargetsFromText(
         detail: isTrailOrHill
           ? "Travail au seuil en côte/trail : garder un effort contrôlé, sans chercher l’allure route."
           : "Travail au seuil : effort difficile mais maîtrisé, proche SV2.",
-        fcLabel: isTrailOrHill ? "Repère : environ 85–90% FC max" : "Repère : environ 85–90% VMA ou zone SV2",
+        fcLabel: isTrailOrHill ? formatFcRangeLabel(profileFcMax, 85, 90, "seuil") : "Repère : environ 85–90% VMA ou zone SV2",
         surface: isTrailOrHill ? "trail" : "route",
       });
     }
@@ -725,6 +1048,11 @@ const [newPassword, setNewPassword] = useState("");
   const [showGpxMap, setShowGpxMap] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [gpxStats, setGpxStats] = useState<{ distance: string; elevationGain: number } | null>(null);
+  const [importPlanText, setImportPlanText] = useState("");
+  const [importPlanSport, setImportPlanSport] = useState("Trail");
+  const [importPlanYear, setImportPlanYear] = useState(String(new Date().getFullYear()));
+  const [importedSessions, setImportedSessions] = useState<ImportedPlanSession[]>([]);
+  const [importingPlan, setImportingPlan] = useState(false);
 
   const chronoStorageKey = user?.id ? `asm-personal-chronos-${user.id}` : "asm-personal-chronos-demo";
 
@@ -1601,6 +1929,78 @@ await supabase.auth.signOut();
     return data.publicUrl;
   }
 
+
+  function handlePlanFileChange(file?: File | null) {
+    if (!file) return;
+
+    const lowerName = file.name.toLowerCase();
+    if (lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls")) {
+      alert("Pour cette première version sans dépendance supplémentaire, exporte le fichier Excel en CSV ou copie-colle le tableau dans la zone d’import. Le bouton est prêt pour intégrer ensuite une lecture XLSX complète.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => setImportPlanText(String(reader.result || ""));
+    reader.readAsText(file);
+  }
+
+  function analyseImportedPlan() {
+    const year = Number(importPlanYear) || new Date().getFullYear();
+    const parsed = parseImportedPlanText(importPlanText, importPlanSport, year);
+    setImportedSessions(parsed);
+    if (parsed.length === 0) {
+      alert("Aucune séance détectée. Copie-colle le contenu du tableau ou utilise un fichier CSV/TXT exporté depuis Excel.");
+    }
+  }
+
+  function updateImportedSession(id: string, patch: Partial<ImportedPlanSession>) {
+    setImportedSessions((current) => current.map((session) => session.id === id ? { ...session, ...patch } : session));
+  }
+
+  function removeImportedSession(id: string) {
+    setImportedSessions((current) => current.filter((session) => session.id !== id));
+  }
+
+  async function createImportedSessions() {
+    if (!user || !isAdmin) return;
+    if (importedSessions.length === 0) {
+      alert("Analyse d’abord un plan avant de l’importer.");
+      return;
+    }
+
+    setImportingPlan(true);
+
+    const payload = importedSessions.map((session) => ({
+      title: session.title || "Séance",
+      type: session.type || importPlanSport || "Course à pied",
+      date: session.date,
+      start_time: session.start_time || "18:30",
+      end_time: session.end_time || null,
+      location: session.location || "À votre convenance",
+      description: session.description,
+      image_url: null,
+      gpx_url: null,
+      created_by: user.id,
+      workout_mode: null,
+      fraction_distance: null,
+      intensity_percent: null,
+    }));
+
+    const { data, error } = await supabase.from("sessions").insert(payload).select();
+    setImportingPlan(false);
+
+    if (error) {
+      alert("Erreur import du plan : " + error.message);
+      return;
+    }
+
+    setSessions((current) => [...current, ...((data || []) as Session[])]);
+    setImportedSessions([]);
+    setImportPlanText("");
+    setActiveTab("calendar");
+    alert(`${payload.length} séance(s) importée(s) dans le calendrier.`);
+  }
+
   async function handleSaveSession() {
     if (!selectedDate && !editingSession?.date) {
       alert("Choisis d'abord une date.");
@@ -2013,6 +2413,9 @@ if (isPasswordRecovery) {
           <button className={activeTab === "calendar" ? "active" : ""} onClick={() => { setActiveTab("calendar"); setShowMenu(false); }}>📅 Calendrier</button>
           <button className={activeTab === "mySessions" ? "active" : ""} onClick={() => { setActiveTab("mySessions"); setShowMenu(false); }}>👤 Mes performances</button>
           <button className={activeTab === "chronos" ? "active" : ""} onClick={() => { setActiveTab("chronos"); setShowMenu(false); }}>🏆 Mes chronos</button>
+          {isAdmin && (
+            <button className={activeTab === "importPlan" ? "active" : ""} onClick={() => { setActiveTab("importPlan"); setShowMenu(false); }}>📥 Importer un plan</button>
+          )}
           <button className={activeTab === "profile" ? "active" : ""} onClick={() => { setActiveTab("profile"); setShowMenu(false); }}>⚙️ Profil</button>
           <button className={activeTab === "notifications" ? "active" : ""} onClick={() => { setActiveTab("notifications"); setShowMenu(false); }}>🔔 Notifications</button>
 
@@ -2054,6 +2457,8 @@ if (isPasswordRecovery) {
                 ? "Mes chronos"
                 : activeTab === "profile"
                 ? "Profil"
+                : activeTab === "importPlan"
+                ? "Importer un plan"
                 : activeTab === "admin"
                 ? "Demandes d’accès"
                 : "Notifications"}
@@ -2685,9 +3090,133 @@ if (isPasswordRecovery) {
           </section>
         )}
 
+
+        {activeTab === "importPlan" && isAdmin && (
+          <section className="admin-screen">
+            <h2>📥 Importer un plan d’entraînement</h2>
+            <p className="empty-message">
+              Colle le contenu du tableau ou importe un fichier CSV/TXT exporté depuis Excel. L’application analyse chaque séance indépendamment : le sport du plan sert seulement de valeur par défaut, puis tu valides avant création dans le calendrier.
+            </p>
+
+            <div className="performance-card">
+              <h3>1. Paramètres du plan</h3>
+              <div className="form-grid">
+                <label>
+                  Sport du plan / valeur par défaut
+                  <select value={importPlanSport} onChange={(event) => setImportPlanSport(event.target.value)}>
+                    {SESSION_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+                  </select>
+                </label>
+                <label>
+                  Année du plan
+                  <input value={importPlanYear} onChange={(event) => setImportPlanYear(event.target.value)} placeholder="2026" />
+                </label>
+              </div>
+
+              <label>
+                Fichier CSV/TXT exporté depuis Excel
+                <input type="file" accept=".csv,.txt,.tsv,.xlsx,.xls" onChange={(event) => handlePlanFileChange(event.target.files?.[0])} />
+              </label>
+
+              <label>
+                Contenu du plan
+                <textarea
+                  value={importPlanText}
+                  onChange={(event) => setImportPlanText(event.target.value)}
+                  placeholder={"Exemple :\nDU 06/04 AU 12/04\nMardi : Côtes : 30' échauffement + 2x7x30'' VMA r=descente + 10' RC\nJeudi : Footing 40 à 60' très facile\nSamedi : Sortie trail 2h 75% FC"}
+                  rows={10}
+                />
+              </label>
+
+              <button className="primary-btn" onClick={analyseImportedPlan}>Analyser le plan</button>
+            </div>
+
+            <div className="performance-card">
+              <h3>📚 Dictionnaire ASM utilisé</h3>
+              <p className="empty-message">
+                Ces mots sont reconnus pour rendre les objectifs plus cohérents : EF, RC, SV1, SV2, Seuil, Tempo, VMA, Fartlek, Côtes, Descente active, Descente rapide, JERK, Préfatigue, Déblocage, Très facile, Actif.
+              </p>
+              <div className="admin-list">
+                {ASM_TRAINING_DICTIONARY.map((entry) => (
+                  <div key={entry.keyword} className="admin-card">
+                    <div>
+                      <strong>{entry.keyword} — {entry.label}</strong>
+                      <p>{entry.explanation}</p>
+                      {entry.intensity && <p>Repère : {entry.intensity}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {importedSessions.length > 0 && (
+              <div className="performance-card">
+                <h3>2. Validation avant import</h3>
+                <p className="empty-message">
+                  Vérifie le sport, la date, le titre et le lieu. Le sport est détecté séance par séance. Les fractions courtes de 100 m à 1000 m sont placées automatiquement au Stade André-Lavie, les autres restent “À votre convenance”.
+                </p>
+
+                <div className="admin-list">
+                  {importedSessions.map((session) => (
+                    <div key={session.id} className="admin-card" style={{ alignItems: "stretch" }}>
+                      <div style={{ width: "100%" }}>
+                        <div className="form-grid">
+                          <label>
+                            Date
+                            <input value={session.date} onChange={(event) => updateImportedSession(session.id, { date: event.target.value })} />
+                          </label>
+                          <label>
+                            Sport
+                            <select value={session.type} onChange={(event) => updateImportedSession(session.id, { type: event.target.value, confidence: "manual" })}>
+                              {SESSION_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+                            </select>
+                          </label>
+                          <label>
+                            Heure
+                            <input value={session.start_time} onChange={(event) => updateImportedSession(session.id, { start_time: event.target.value })} />
+                          </label>
+                          <label>
+                            Lieu
+                            <input value={session.location} onChange={(event) => updateImportedSession(session.id, { location: event.target.value })} />
+                          </label>
+                        </div>
+
+                        <label>
+                          Titre
+                          <input value={session.title} onChange={(event) => updateImportedSession(session.id, { title: event.target.value })} />
+                        </label>
+
+                        <label>
+                          Séance
+                          <textarea value={session.description} onChange={(event) => updateImportedSession(session.id, { description: event.target.value, notes: dictionaryNotesForSession(event.target.value) })} rows={3} />
+                        </label>
+
+                        {session.notes.length > 0 && (
+                          <div className="chrono-analysis-card">
+                            {session.notes.slice(0, 4).map((note) => <p key={note}>🎯 {note}</p>)}
+                          </div>
+                        )}
+                      </div>
+
+                      <button className="danger-btn" onClick={() => removeImportedSession(session.id)}>Supprimer cette ligne</button>
+                    </div>
+                  ))}
+                </div>
+
+                <button className="primary-btn" onClick={createImportedSessions} disabled={importingPlan}>
+                  {importingPlan ? "Import en cours..." : `Créer ${importedSessions.length} séance(s) dans le calendrier`}
+                </button>
+              </div>
+            )}
+          </section>
+        )}
+
         {activeTab === "admin" && isAdmin && (
           <section className="admin-screen">
             <h2>Demandes d’accès</h2>
+            <button className="admin-choice-btn selected" onClick={() => setActiveTab("importPlan")} style={{ marginBottom: 16 }}>
+              📥 Importer un plan d’entraînement
+            </button>
 
             {pendingProfiles.length === 0 ? (
               <p className="empty-message">Aucune demande en attente</p>
@@ -3102,16 +3631,7 @@ if (isPasswordRecovery) {
                                 chercher l’allure route.
                               </p>
 
-                              {profileFcMax ? (
-                                <p>
-                                  Repère cardio : environ{" "}
-                                  {Math.round(Number(profileFcMax) * 0.85)} à{" "}
-                                  {Math.round(Number(profileFcMax) * 0.9)} bpm
-                                  {" "}({`85–90% FC max`})
-                                </p>
-                              ) : (
-                                <p>Repère cardio : environ 85–90% FC max</p>
-                              )}
+                              <p>{formatFcRangeLabel(profileFcMax, 85, 90, "seuil")}</p>
 
                               <p>
                                 Repère sensation : effort difficile mais maîtrisé,
