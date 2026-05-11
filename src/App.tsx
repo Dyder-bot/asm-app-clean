@@ -4067,7 +4067,7 @@ if (isPasswordRecovery) {
               </button>
               <h2>Parcours</h2>
             </div>
- 
+
             <div id="gpx-map"></div>
 
             {gpxStats && (
