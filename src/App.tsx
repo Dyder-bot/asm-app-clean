@@ -627,10 +627,6 @@ function detectRoadRaceDistances(session?: Pick<Session, "title" | "description"
   return distances;
 }
 
-function detectRaceDistance(session?: Pick<Session, "title" | "description" | "type"> | null) {
-  return detectRoadRaceDistances(session)[0] || null;
-}
-
 function isTrailRace(session?: Pick<Session, "title" | "description" | "type"> | null) {
   const text = `${session?.title || ""} ${session?.description || ""} ${session?.type || ""}`.toLowerCase();
   return /trail|d\+|dénivelé|denivele|\d+\s*x\s*\d+(?:\.\d+)?\s*km|\d+\s*m\s*(?:d\+|\+)/.test(text);
@@ -703,10 +699,6 @@ function raceProjectionsFromVma(session: Session | null, vmaValue: string, profi
   return detectRoadRaceDistances(session)
     .map((distance) => buildRoadRaceProjection(distance, vmaValue))
     .filter((projection): projection is RaceProjection => Boolean(projection));
-}
-
-function raceProjectionFromVma(session: Session | null, vmaValue: string, profileFcMax = ""): RaceProjection | null {
-  return raceProjectionsFromVma(session, vmaValue, profileFcMax)[0] || null;
 }
 
 function estimateVmaFromChronoDistance(distance: string, chronoSeconds: number) {
