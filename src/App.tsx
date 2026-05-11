@@ -1216,6 +1216,7 @@ export default function CalendarApp() {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [showParticipantList, setShowParticipantList] = useState<ParticipationStatus | null>(null);
   const [selectedGoalIndex, setSelectedGoalIndex] = useState<number | null>(null);
+  const [confirmedGoalIndex, setConfirmedGoalIndex] = useState<number | null>(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
     return window.localStorage.getItem("asm-notifications") === "true";
   });
@@ -1530,7 +1531,8 @@ const [newPassword, setNewPassword] = useState("");
       return;
     }
 
-    setSelectedGoalIndex(0);
+    setSelectedGoalIndex(null);
+    setConfirmedGoalIndex(null);
     fetchParticipants(selectedSession.id);
   }, [selectedSession]);
 
@@ -4025,25 +4027,26 @@ if (isPasswordRecovery) {
               {selectedRaceProjections.length > 0 && myParticipation === "present" && (
                 <div className="personal-goals-wrapper">
                   {selectedRaceProjections.map((raceProjection, raceGoalIndex) => {
-                    const isRaceGoalSelected = selectedGoalIndex === raceGoalIndex;
+                    const isRaceGoalOpen = selectedGoalIndex === raceGoalIndex;
+                    const isRaceGoalConfirmed = confirmedGoalIndex === raceGoalIndex;
                     const shortLabel = raceProjection.kind === "trail" ? raceProjection.distance : raceGoalShortLabel(raceProjection.distance);
 
                     return (
                       <div
                         key={`${raceProjection.kind}-${raceProjection.distance}-${raceGoalIndex}`}
-                        className={`personal-goal-card ${isRaceGoalSelected ? "selected-goal" : ""}`}
+                        className={`personal-goal-card ${isRaceGoalOpen || isRaceGoalConfirmed ? "selected-goal" : ""}`}
                         style={{ borderLeft: `6px solid ${RACE_COLORS.border}` }}
                       >
                         <button
                           type="button"
-                          className={isRaceGoalSelected ? "goal-selected-btn" : "goal-unselected-btn"}
-                          onClick={() => setSelectedGoalIndex(raceGoalIndex)}
-                          style={{ marginBottom: isRaceGoalSelected ? 16 : 0 }}
+                          className={isRaceGoalOpen ? "goal-selected-btn" : "goal-unselected-btn"}
+                          onClick={() => setSelectedGoalIndex(isRaceGoalOpen ? null : raceGoalIndex)}
+                          style={{ marginBottom: isRaceGoalOpen ? 16 : 0 }}
                         >
-                          🏁 Objectif {raceGoalIndex + 1} — {shortLabel}
+                          🏁 {shortLabel}
                         </button>
 
-                        {isRaceGoalSelected && (
+                        {isRaceGoalOpen && (
                           <>
                             {raceProjection.kind === "road" ? (
                               <>
@@ -4051,6 +4054,14 @@ if (isPasswordRecovery) {
                                 {raceProjection.pace && <p>Allure repère : {formatPace(raceProjection.pace)}</p>}
                                 <p>{roadRaceAdvice(raceProjection.distance)}</p>
                                 <p className="goal-muted">Projection indicative : à ajuster selon le parcours, la météo, la fatigue et les sensations du jour.</p>
+                                <button
+                                  type="button"
+                                  className="primary-btn"
+                                  onClick={() => setConfirmedGoalIndex(raceGoalIndex)}
+                                  style={{ marginTop: 12 }}
+                                >
+                                  {isRaceGoalConfirmed ? "Objectif sélectionné" : "Choisir cette distance"}
+                                </button>
                               </>
                             ) : (
                               <>
@@ -4060,6 +4071,14 @@ if (isPasswordRecovery) {
                                 <p>{raceProjection.fcLabel}</p>
                                 <p>Sur trail, le chrono dépend surtout du terrain, du dénivelé, de la météo et de la gestion. Reste facile dans les montées, relance proprement quand le terrain le permet, et garde de l’énergie pour finir fort.</p>
                                 <p className="goal-muted">Repère indicatif : en trail, l’allure au kilomètre n’est pas une cible fiable. La fréquence cardiaque et les sensations doivent rester prioritaires.</p>
+                                <button
+                                  type="button"
+                                  className="primary-btn"
+                                  onClick={() => setConfirmedGoalIndex(raceGoalIndex)}
+                                  style={{ marginTop: 12 }}
+                                >
+                                  {isRaceGoalConfirmed ? "Objectif sélectionné" : "Choisir cet objectif trail"}
+                                </button>
                               </>
                             )}
                           </>
@@ -4073,7 +4092,8 @@ if (isPasswordRecovery) {
               {personalGoals.length > 0 && (
                 <div className="personal-goals-wrapper">
                   {personalGoals.map((personalGoal, goalIndex) => {
-                    const isGoalSelected = selectedGoalIndex === goalIndex;
+                    const isGoalOpen = selectedGoalIndex === goalIndex;
+                    const isGoalConfirmed = confirmedGoalIndex === goalIndex;
                     const goalLabel = (() => {
                       if (personalGoal.type === "vma") {
                         if (personalGoal.isTimeBased) {
@@ -4104,18 +4124,18 @@ if (isPasswordRecovery) {
                     return (
                       <div
                         key={`${personalGoal.type}-${goalIndex}`}
-                        className={`personal-goal-card ${isGoalSelected ? "selected-goal" : ""}`}
+                        className={`personal-goal-card ${isGoalOpen || isGoalConfirmed ? "selected-goal" : ""}`}
                       >
                         <button
                           type="button"
-                          className={isGoalSelected ? "goal-selected-btn" : "goal-unselected-btn"}
-                          onClick={() => setSelectedGoalIndex(goalIndex)}
-                          style={{ marginBottom: isGoalSelected ? 16 : 0 }}
+                          className={isGoalOpen ? "goal-selected-btn" : "goal-unselected-btn"}
+                          onClick={() => setSelectedGoalIndex(isGoalOpen ? null : goalIndex)}
+                          style={{ marginBottom: isGoalOpen ? 16 : 0 }}
                         >
-                          🎯 Objectif {goalIndex + 1} — {goalLabel}
+                          🎯 {goalLabel}
                         </button>
 
-                        {isGoalSelected && (
+                        {isGoalOpen && (
                           <>
                             {personalGoal.type === "vma" && (
                               <>
@@ -4205,6 +4225,15 @@ if (isPasswordRecovery) {
                             {personalGoal.type === "allure" && (
                               <p>Allure cible : {formatPace(personalGoal.pace)}</p>
                             )}
+
+                            <button
+                              type="button"
+                              className="primary-btn"
+                              onClick={() => setConfirmedGoalIndex(goalIndex)}
+                              style={{ marginTop: 12 }}
+                            >
+                              {isGoalConfirmed ? "Objectif sélectionné" : "Choisir cet objectif"}
+                            </button>
                           </>
                         )}
                       </div>
