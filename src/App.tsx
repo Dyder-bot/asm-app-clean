@@ -2721,23 +2721,32 @@ if (isPasswordRecovery) {
           <button className={activeTab === "calendar" ? "active" : ""} onClick={() => { setActiveTab("calendar"); setShowMenu(false); }}>📅 Calendrier</button>
           <button className={activeTab === "mySessions" ? "active" : ""} onClick={() => { setActiveTab("mySessions"); setShowMenu(false); }}>🎯 Mes zones cibles</button>
           <button className={activeTab === "chronos" ? "active" : ""} onClick={() => { setActiveTab("chronos"); setShowMenu(false); }}>🏆 Mes chronos</button>
-          {isAdmin && (
-            <button className={activeTab === "importPlan" ? "active" : ""} onClick={() => { setActiveTab("importPlan"); setShowMenu(false); }}>📥 Importer un plan</button>
-          )}
           <button className={activeTab === "profile" ? "active" : ""} onClick={() => { setActiveTab("profile"); setShowMenu(false); }}>⚙️ Profil</button>
           <button className={activeTab === "notifications" ? "active" : ""} onClick={() => { setActiveTab("notifications"); setShowMenu(false); }}>🔔 Notifications</button>
 
           {isAdmin && (
-            <button
-              className={activeTab === "admin" ? "active" : ""}
-              onClick={() => {
-                setActiveTab("admin");
-                setShowMenu(false);
-                refreshAdminLists();
-              }}
-            >
-              ✅ Demandes d’accès{pendingProfiles.length + deletionRequests.length > 0 ? ` (${pendingProfiles.length + deletionRequests.length})` : ""}
-            </button>
+            <>
+              <button
+                className={activeTab === "admin" ? "active" : ""}
+                onClick={() => {
+                  setActiveTab("admin");
+                  setShowMenu(false);
+                  refreshAdminLists();
+                }}
+              >
+                ✅ Demandes d’accès{pendingProfiles.length + deletionRequests.length > 0 ? ` (${pendingProfiles.length + deletionRequests.length})` : ""}
+              </button>
+
+              <button
+                className={activeTab === "importPlan" ? "active" : ""}
+                onClick={() => {
+                  setActiveTab("importPlan");
+                  setShowMenu(false);
+                }}
+              >
+                📥 Importer un plan
+              </button>
+            </>
           )}
 
           <button onClick={handleLogout}>↪ Déconnexion</button>
