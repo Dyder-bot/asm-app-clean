@@ -1318,13 +1318,15 @@ export default function CalendarApp() {
     if (!compatibilityType) return null;
 
     const currentVma =
-      Number((profileVma as any) || (profile?.vma as any) || (profile?.estimated_vma as any) || 0);
+      Number((globalThis as any).profileVma || 0);
 
     if (!currentVma) return null;
 
     const sessionId = session?.id;
     const rawParticipants = Array.isArray((participants as any)) ? (participants as any) : [];
-    const rawProfiles = Array.isArray((profiles as any)) ? (profiles as any) : [];
+    const rawProfiles = Array.isArray((globalThis as any).profiles)
+      ? ((globalThis as any).profiles as any[])
+      : [];
 
     const participantUserIds = rawParticipants
       .filter((p: any) => p?.session_id === sessionId && (p?.status === "présent" || p?.status === "present" || p?.status === "participant"))
