@@ -1309,33 +1309,181 @@ const buildCompatibilityMessage = (
 };
 
 
+
+type PartnerCandidate = {
+  id?: string | null;
+  firstname?: string | null;
+  lastname?: string | null;
+  vma?: number | string | null;
+  estimated_vma?: number | string | null;
+};
+
+const partnerCompatibilityMessages = {
+  vma: [
+    "🤝 Ce soir, tu peux te rapprocher de {names} pour garder le bon rythme sur la séance.",
+    "⚡ Vous avez des allures proches ce soir avec {names}. Une bonne occasion de faire une grosse séance ensemble.",
+    "🎯 Pour tenir les intensités prévues, tu peux partager la séance avec {names}.",
+    "🏃 Vous êtes plusieurs à avoir des rythmes compatibles aujourd’hui : {names}.",
+    "💪 Une séance de qualité se fait souvent à plusieurs. Tu peux te rapprocher de {names}.",
+  ],
+  threshold: [
+    "🎯 Tu peux te rapprocher de {names} pour travailler dans les mêmes zones ce soir.",
+    "🔥 Les allures prévues sont proches entre toi et {names}.",
+    "⚡ Pour rester régulier sur les blocs, {names} ont des intensités similaires aux tiennes.",
+    "🤝 Vous êtes plusieurs à pouvoir faire une très bonne séance ensemble ce soir : {names}.",
+    "🏃 Garder le bon rythme est souvent plus facile à plusieurs. Tu peux partager la séance avec {names}.",
+  ],
+  trail: [
+    "⛰️ Tu peux faire la séance avec {names}, vos zones d’effort sont proches ce soir.",
+    "🏔️ Vous avez des intensités compatibles pour travailler ensemble dans les côtes : {names}.",
+    "🔥 En montée aussi, courir à plusieurs aide à garder le bon engagement. {names} sont sur des intensités similaires.",
+    "🤝 N’hésite pas à partager la séance avec {names} pour rester dans les bonnes zones d’effort.",
+    "⚡ Vous devriez bien vous entendre sur cette séance spécifique avec {names}.",
+  ],
+} as const;
+
+const getPartnerCompatibilityType = (title: string, description: string, category?: string | null) => {
+  const value = `${title || ""} ${description || ""} ${category || ""}`.toLowerCase();
+
+  if (
+    value.includes("course / événement") ||
+    value.includes("course/evenement") ||
+    value.includes("course/événement") ||
+    value.includes("compétition") ||
+    value.includes("competition")
+  ) {
+    return null;
+  }
+
+  if (
+    value.includes("footing") ||
+    value.includes("endurance fondamentale") ||
+    value.includes("récup") ||
+    value.includes("recup") ||
+    value.includes("récupération") ||
+    value.includes("recuperation")
+  ) {
+    return null;
+  }
+
+  if (
+    value.includes("côte") ||
+    value.includes("cotes") ||
+    value.includes("côtes") ||
+    value.includes("trail")
+  ) {
+    return "trail" as const;
+  }
+
+  if (
+    value.includes("seuil") ||
+    value.includes("tempo") ||
+    value.includes("spécifique") ||
+    value.includes("specifique")
+  ) {
+    return "threshold" as const;
+  }
+
+  if (
+    value.includes("vma") ||
+    value.includes("fractionné") ||
+    value.includes("fractionne") ||
+    /\d+\s*[x×]\s*\d+\s*(m|metres|mètres)?/.test(value)
+  ) {
+    return "vma" as const;
+  }
+
+  return null;
+};
+
+const getPartnerCandidateVma = (candidate: PartnerCandidate) => {
+  const value = candidate.vma ?? candidate.estimated_vma;
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : null;
+};
+
+const formatPartnerCandidateName = (candidate: PartnerCandidate) => {
+  const first = (candidate.firstname || "").trim();
+  const last = (candidate.lastname || "").trim();
+  const initial = last ? `${last.charAt(0).toUpperCase()}.` : "";
+  return [first, initial].filter(Boolean).join(" ").trim();
+};
+
+const pickPartnerCompatibleCandidates = (
+  candidates: PartnerCandidate[],
+  currentUserId: string | undefined,
+  currentVma: number | string | null | undefined,
+  compatibilityType: keyof typeof partnerCompatibilityMessages | null,
+  limit = 3
+) => {
+  if (!compatibilityType) return [];
+
+  const myVma = Number(currentVma);
+  if (!Number.isFinite(myVma) || myVma <= 0) return [];
+
+  const tolerance = compatibilityType === "trail" ? 1.2 : compatibilityType === "threshold" ? 0.9 : 0.7;
+
+  return candidates
+    .filter((candidate) => candidate.id && candidate.id !== currentUserId)
+    .map((candidate) => ({
+      candidate,
+      vma: getPartnerCandidateVma(candidate),
+    }))
+    .filter((item) => item.vma !== null && Math.abs((item.vma as number) - myVma) <= tolerance)
+    .sort((a, b) => Math.abs((a.vma as number) - myVma) - Math.abs((b.vma as number) - myVma))
+    .map((item) => item.candidate)
+    .filter((candidate) => formatPartnerCandidateName(candidate).length > 0)
+    .slice(0, limit);
+};
+
+const buildPartnerCompatibilityMessage = (
+  names: string[],
+  compatibilityType: keyof typeof partnerCompatibilityMessages
+) => {
+  const library = partnerCompatibilityMessages[compatibilityType];
+  const index = names.join("").length % library.length;
+  const formattedNames =
+    names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} et ${names[names.length - 1]}`;
+
+  return library[index].replace("{names}", formattedNames);
+};
+
+
 export default function CalendarApp() {
   const [activeTab, setActiveTab] = useState<AppTab>("calendar");
-  const [openPartnerSessionId, setOpenPartnerSessionId] = useState<string | null>(null);
+  const [openPartnerSuggestionKey, setOpenPartnerSuggestionKey] = useState<string | null>(null);
 
-  const getPartnersForSession = (session: any) => {
-    const compatibilityType = getCompatibilityType(session?.title || "", session?.description || "", session?.category || session?.type || null);
+  const getPartnerSuggestionForSession = (session: any) => {
+    const compatibilityType = getPartnerCompatibilityType(
+      session?.title || "",
+      session?.description || "",
+      session?.category || session?.type || null
+    );
+
     if (!compatibilityType) return null;
 
-    const currentVma =
-      Number((globalThis as any).profileVma || 0);
-
+    const currentVma = Number((profileVma as any) || 0);
     if (!currentVma) return null;
 
     const sessionId = session?.id;
     const rawParticipants = Array.isArray((participants as any)) ? (participants as any) : [];
-    const rawProfiles = Array.isArray((globalThis as any).profiles)
-      ? ((globalThis as any).profiles as any[])
+    const rawProfiles = Array.isArray((allowedProfiles as any))
+      ? (allowedProfiles as any)
+      : Array.isArray((adminProfiles as any))
+      ? (adminProfiles as any)
       : [];
 
     const participantUserIds = rawParticipants
-      .filter((p: any) => p?.session_id === sessionId && (p?.status === "présent" || p?.status === "present" || p?.status === "participant"))
+      .filter((p: any) =>
+        p?.session_id === sessionId &&
+        (p?.status === "présent" || p?.status === "present" || p?.status === "participant")
+      )
       .map((p: any) => p?.user_id)
       .filter(Boolean);
 
     const candidates = rawProfiles.filter((p: any) => participantUserIds.includes(p?.id));
 
-    const suggestions = pickCompatiblePartners(
+    const suggestions = pickPartnerCompatibleCandidates(
       candidates,
       user?.id,
       currentVma,
@@ -1344,14 +1492,42 @@ export default function CalendarApp() {
 
     if (suggestions.length === 0) return null;
 
-    const names = suggestions.map(formatPartnerName).filter(Boolean);
+    const names = suggestions.map(formatPartnerCandidateName).filter(Boolean);
     if (names.length === 0) return null;
 
     return {
       compatibilityType,
-      message: buildCompatibilityMessage(names, compatibilityType),
+      message: buildPartnerCompatibilityMessage(names, compatibilityType),
     };
   };
+
+  const renderPartnerSuggestionButton = (session: any, suffix: string) => {
+    const partnerSuggestion = getPartnerSuggestionForSession(session);
+    if (!partnerSuggestion) return null;
+
+    const key = `${session?.id || "session"}-${suffix}`;
+    const isOpen = openPartnerSuggestionKey === key;
+
+    return (
+      <div style={{ marginTop: 14 }}>
+        <button
+          type="button"
+          className="secondary-btn"
+          onClick={() => setOpenPartnerSuggestionKey(isOpen ? null : key)}
+        >
+          🤝 Trouver un partenaire d’allure
+        </button>
+
+        {isOpen && (
+          <div className="zone-info-box" style={{ marginTop: 10 }}>
+            <p>{partnerSuggestion.message}</p>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const [openPartnerSessionId, setOpenPartnerSessionId] = useState<string | null>(null);
 
   const [showMenu, setShowMenu] = useState(false);
   const [showAdminActions, setShowAdminActions] = useState(false);
@@ -2757,7 +2933,9 @@ await supabase.auth.signOut();
           {session.participationStatus && (
             <small className="status-badge">{session.participationStatus === "present" ? "✓ Participant" : "☆ Intéressé"}</small>
           )}
-        </div>
+        
+                        {renderPartnerSuggestionButton(session, String(goalIndex))}
+</div>
 
                       {(() => {
                         const partnerSuggestion = getPartnersForSession(session);
