@@ -14,7 +14,7 @@ const ADMIN_EMAILS = [
   "foucatdidier@gmail.com",
 ];
 
-
+ 
 const SESSION_TYPES = [
   "Trail",
   "Course à pied",
