@@ -43,7 +43,7 @@ const RACE_COLORS = {
 
 const WEEK_DAYS = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
 
-type AppTab = "calendar" | "news" | "mySessions" | "chronos" | "profile" | "notifications" | "admin" | "importPlan";
+type AppTab = "calendar" | "news" | "publishNews" | "mySessions" | "chronos" | "profile" | "notifications" | "admin" | "importPlan";
 type ParticipationStatus = "present" | "interested";
 type WorkoutMode = "" | "vma" | "fc" | "seuil" | "10km" | "allure";
 
@@ -1332,6 +1332,7 @@ export default function CalendarApp() {
   const [newClubMessageLinkUrl, setNewClubMessageLinkUrl] = useState("");
   const [newClubMessageLinkLabel, setNewClubMessageLinkLabel] = useState("");
   const [newClubMessageImportant, setNewClubMessageImportant] = useState(false);
+  const [newClubMessageFile, setNewClubMessageFile] = useState<File | null>(null);
   const [publishingClubMessage, setPublishingClubMessage] = useState(false);
   const [deletionRequestSent, setDeletionRequestSent] = useState(false);
   const [sendingDeletionRequest, setSendingDeletionRequest] = useState(false);
@@ -1425,6 +1426,20 @@ const [newPassword, setNewPassword] = useState("");
   }
 
 
+
+  function toggleMenu() {
+    if (typeof window !== "undefined" && !showMenu) {
+      const currentHistoryState = window.history.state || {};
+      window.history.pushState(
+        { ...currentHistoryState, asmMenuOpen: true },
+        "",
+        window.location.href
+      );
+    }
+
+    setShowMenu((current) => !current);
+  }
+
   async function refreshClubMessageUnreadCount(messagesToCheck: ClubMessage[] = clubMessages) {
     if (!user || messagesToCheck.length === 0) {
       setUnreadClubMessageCount(0);
@@ -1503,22 +1518,63 @@ const [newPassword, setNewPassword] = useState("");
 
     const title = newClubMessageTitle.trim();
     const content = newClubMessageContent.trim();
-    const linkUrl = newClubMessageLinkUrl.trim();
+    const manualLinkUrl = newClubMessageLinkUrl.trim();
     const linkLabel = newClubMessageLinkLabel.trim();
 
-    if (!title || !content) {
-      setClubMessageFeedback("Ajoute au moins un titre et un message.");
+    if (!title) {
+      setClubMessageFeedback("Ajoute au moins un titre.");
+      return;
+    }
+
+    if (!content && !manualLinkUrl && !newClubMessageFile) {
+      setClubMessageFeedback("Ajoute un message, un lien ou un document PDF.");
+      return;
+    }
+
+    if (newClubMessageFile && newClubMessageFile.type !== "application/pdf") {
+      setClubMessageFeedback("Le document doit être un fichier PDF.");
       return;
     }
 
     setPublishingClubMessage(true);
     setClubMessageFeedback("");
 
+    let finalLinkUrl = manualLinkUrl || null;
+    let finalLinkLabel = linkLabel || (manualLinkUrl ? "Ouvrir le lien" : null);
+
+    if (newClubMessageFile) {
+      const safeFileName = newClubMessageFile.name
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-zA-Z0-9._-]/g, "-");
+      const filePath = `${user.id}/${Date.now()}-${safeFileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("club-documents")
+        .upload(filePath, newClubMessageFile, {
+          contentType: "application/pdf",
+          upsert: false,
+        });
+
+      if (uploadError) {
+        setClubMessageFeedback("Erreur envoi PDF : " + uploadError.message);
+        setPublishingClubMessage(false);
+        return;
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from("club-documents")
+        .getPublicUrl(filePath);
+
+      finalLinkUrl = publicUrlData.publicUrl;
+      finalLinkLabel = linkLabel || "Lire le document PDF";
+    }
+
     const { error } = await supabase.from("club_messages").insert({
       title,
-      content,
-      link_url: linkUrl || null,
-      link_label: linkLabel || (linkUrl ? "Ouvrir le lien" : null),
+      content: content || "Document à consulter dans l’application.",
+      link_url: finalLinkUrl,
+      link_label: finalLinkLabel,
       important: newClubMessageImportant,
       published: true,
       created_by: user.id,
@@ -1532,6 +1588,7 @@ const [newPassword, setNewPassword] = useState("");
       setNewClubMessageLinkUrl("");
       setNewClubMessageLinkLabel("");
       setNewClubMessageImportant(false);
+      setNewClubMessageFile(null);
       setClubMessageFeedback("Actualité publiée dans l’application.");
       await fetchClubMessages();
     }
@@ -1948,6 +2005,12 @@ const [newPassword, setNewPassword] = useState("");
     if (typeof window === "undefined") return;
 
     const handleBrowserBack = () => {
+      if (showMenu) {
+        setShowMenu(false);
+        if (activeTab !== "calendar") setActiveTab("calendar");
+        return;
+      }
+
       if (selectedSessionHistoryIdRef.current) {
         closingSessionFromBrowserBackRef.current = true;
         setSelectedSession(null);
@@ -1968,7 +2031,7 @@ const [newPassword, setNewPassword] = useState("");
     return () => {
       window.removeEventListener("popstate", handleBrowserBack);
     };
-  }, [activeTab]);
+  }, [activeTab, showMenu]);
 
   useEffect(() => {
     if (!user) return;
@@ -3471,6 +3534,13 @@ if (isPasswordRecovery) {
               </button>
 
               <button
+                className={activeTab === "publishNews" ? "active" : ""}
+                onClick={() => openTab("publishNews") }
+              >
+                📰 Ajouter une actualité
+              </button>
+
+              <button
                 className={activeTab === "importPlan" ? "active" : ""}
                 onClick={() => openTab("importPlan") }
               >
@@ -3489,7 +3559,10 @@ if (isPasswordRecovery) {
 
           <button
             type="button"
-            onClick={() => openTab("news")}
+            disabled={!clubMessagesLoading && clubMessages.length === 0}
+            onClick={() => {
+              if (clubMessages.length > 0) openTab("news");
+            }}
             style={{
               marginTop: 14,
               width: "100%",
@@ -3503,7 +3576,8 @@ if (isPasswordRecovery) {
               justifyContent: "space-between",
               gap: 10,
               fontWeight: 800,
-              cursor: "pointer",
+              cursor: clubMessages.length > 0 ? "pointer" : "default",
+              opacity: clubMessages.length > 0 ? 1 : 0.65,
             }}
           >
             <span>📰 Actualités</span>
@@ -3532,7 +3606,7 @@ if (isPasswordRecovery) {
 
       <div className="app-container" onClick={(e) => e.stopPropagation()}>
         <header className="calendar-header">
-          <button className="menu-btn" onClick={() => setShowMenu((current) => !current)}>☰</button>
+          <button className="menu-btn" onClick={toggleMenu}>☰</button>
           <button onClick={() => setCurrentDate(new Date(year, month - 1))}>◀</button>
           <div>
             <h1>{currentDate.toLocaleString("fr-FR", { month: "long" })} {year}</h1>
@@ -3541,6 +3615,8 @@ if (isPasswordRecovery) {
                 ? "ASM Pau"
                 : activeTab === "news"
                 ? "Actualités ASM"
+                : activeTab === "publishNews"
+                ? "Ajouter une actualité"
                 : activeTab === "mySessions"
                 ? "Mes zones cibles"
                 : activeTab === "chronos"
@@ -3619,62 +3695,6 @@ if (isPasswordRecovery) {
               </p>
             </div>
 
-            {isAdmin && (
-              <div className="profile-card" style={{ marginBottom: 14 }}>
-                <h3 style={{ marginTop: 0 }}>Publier une actualité</h3>
-
-                <label>
-                  Titre
-                  <input
-                    value={newClubMessageTitle}
-                    onChange={(event) => setNewClubMessageTitle(event.target.value)}
-                    placeholder="Ex : Lettre du mois de juin"
-                  />
-                </label>
-
-                <label>
-                  Message
-                  <textarea
-                    value={newClubMessageContent}
-                    onChange={(event) => setNewClubMessageContent(event.target.value)}
-                    placeholder="Écris ici le message visible par les adhérents..."
-                    rows={5}
-                  />
-                </label>
-
-                <label>
-                  Lien optionnel
-                  <input
-                    value={newClubMessageLinkUrl}
-                    onChange={(event) => setNewClubMessageLinkUrl(event.target.value)}
-                    placeholder="https://..."
-                  />
-                </label>
-
-                <label>
-                  Texte du bouton lien
-                  <input
-                    value={newClubMessageLinkLabel}
-                    onChange={(event) => setNewClubMessageLinkLabel(event.target.value)}
-                    placeholder="Ex : Répondre au sondage"
-                  />
-                </label>
-
-                <label className="checkbox-line">
-                  <input
-                    type="checkbox"
-                    checked={newClubMessageImportant}
-                    onChange={(event) => setNewClubMessageImportant(event.target.checked)}
-                  />
-                  Message important
-                </label>
-
-                <button className="primary-btn" onClick={publishClubMessage} disabled={publishingClubMessage}>
-                  {publishingClubMessage ? "Publication..." : "Publier dans l’application"}
-                </button>
-              </div>
-            )}
-
             {clubMessageFeedback && <div className="hint-card" style={{ marginBottom: 14 }}>{clubMessageFeedback}</div>}
 
             {clubMessagesLoading ? (
@@ -3707,7 +3727,7 @@ if (isPasswordRecovery) {
                           rel="noreferrer"
                           style={{ textAlign: "center", textDecoration: "none", marginTop: 10 }}
                         >
-                          {message.link_label || "Ouvrir le lien"}
+                          {message.link_label || "Lire le document"}
                         </a>
                       )}
                     </div>
@@ -3715,6 +3735,84 @@ if (isPasswordRecovery) {
                 })}
               </div>
             )}
+          </section>
+        )}
+
+        {activeTab === "publishNews" && isAdmin && (
+          <section className="panel-screen">
+            <h2>Ajouter une actualité</h2>
+
+            <div className="profile-card" style={{ marginBottom: 14 }}>
+              <strong>Publication admin</strong>
+              <p>
+                Ajoute ici une lettre du mois, un sondage ou un document PDF. Les adhérents le verront dans l’encart Club du menu.
+              </p>
+            </div>
+
+            <div className="profile-card" style={{ marginBottom: 14 }}>
+              <h3 style={{ marginTop: 0 }}>Nouvelle actualité</h3>
+
+              <label>
+                Titre
+                <input
+                  value={newClubMessageTitle}
+                  onChange={(event) => setNewClubMessageTitle(event.target.value)}
+                  placeholder="Ex : Lettre d’information du mois de mai"
+                />
+              </label>
+
+              <label>
+                Texte optionnel
+                <textarea
+                  value={newClubMessageContent}
+                  onChange={(event) => setNewClubMessageContent(event.target.value)}
+                  placeholder="Petit message visible par les adhérents..."
+                  rows={4}
+                />
+              </label>
+
+              <label>
+                Document PDF optionnel
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(event) => setNewClubMessageFile(event.target.files?.[0] ?? null)}
+                />
+              </label>
+
+              <label>
+                Lien optionnel
+                <input
+                  value={newClubMessageLinkUrl}
+                  onChange={(event) => setNewClubMessageLinkUrl(event.target.value)}
+                  placeholder="https://..."
+                />
+              </label>
+
+              <label>
+                Texte du bouton lien
+                <input
+                  value={newClubMessageLinkLabel}
+                  onChange={(event) => setNewClubMessageLinkLabel(event.target.value)}
+                  placeholder="Ex : Lire la lettre / Répondre au sondage"
+                />
+              </label>
+
+              <label className="checkbox-line">
+                <input
+                  type="checkbox"
+                  checked={newClubMessageImportant}
+                  onChange={(event) => setNewClubMessageImportant(event.target.checked)}
+                />
+                Message important
+              </label>
+
+              <button className="primary-btn" onClick={publishClubMessage} disabled={publishingClubMessage}>
+                {publishingClubMessage ? "Publication..." : "Publier dans l’application"}
+              </button>
+            </div>
+
+            {clubMessageFeedback && <div className="hint-card" style={{ marginBottom: 14 }}>{clubMessageFeedback}</div>}
           </section>
         )}
 
@@ -5257,7 +5355,7 @@ if (isPasswordRecovery) {
                 </div>
               </div>
             )}
- 
+
             {!mapLoaded && (
               <p className="map-loading">Chargement du parcours...</p>
             )}
