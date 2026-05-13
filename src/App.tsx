@@ -1311,7 +1311,8 @@ export default function CalendarApp() {
   const [pendingProfiles, setPendingProfiles] = useState<MemberProfile[]>([]);
   const [approvedProfiles, setApprovedProfiles] = useState<MemberProfile[]>([]);
   const [deletionRequests, setDeletionRequests] = useState<AccountDeletionRequest[]>([]);
-
+  const [deletionRequestSent, setDeletionRequestSent] = useState(false);
+  const [sendingDeletionRequest, setSendingDeletionRequest] = useState(false);
   const [approvingProfileId, setApprovingProfileId] = useState<string | null>(null);
   const [approvingAdminProfileId, setApprovingAdminProfileId] = useState<string | null>(null);
   const [deactivatingProfileId, setDeactivatingProfileId] = useState<string | null>(null);
@@ -1867,7 +1868,17 @@ const [newPassword, setNewPassword] = useState("");
 
   setPrivacyAccepted(privacyData?.privacy_accepted === true);
   setPrivacyAcceptedAt(privacyData?.privacy_accepted_at || null);
-if (data.is_admin === true) {
+
+  const { data: existingDeletionRequest } = await supabase
+    .from("account_deletion_requests")
+    .select("id, status")
+    .eq("user_id", user.id)
+    .eq("status", "pending")
+    .maybeSingle();
+
+  setDeletionRequestSent(Boolean(existingDeletionRequest));
+
+  if (data.is_admin === true) {
     await fetchPendingProfiles();
     await fetchApprovedProfiles();
     await fetchDeletionRequests(true);
@@ -2098,6 +2109,38 @@ async function toggleAdminProfile(profileId: string, makeAdmin: boolean) {
     alert("Profil enregistré");
   }
 
+  async function requestAccountDeletion() {
+    if (!user || sendingDeletionRequest || deletionRequestSent) return;
+
+    const confirmRequest = window.confirm(
+      "Confirmer la demande de suppression de ton compte ? Un administrateur du club traitera ensuite la demande."
+    );
+
+    if (!confirmRequest) return;
+
+    setSendingDeletionRequest(true);
+
+    const { error } = await supabase
+      .from("account_deletion_requests")
+      .insert({
+        user_id: user.id,
+        email: user.email || email || null,
+        firstname: firstname || null,
+        lastname: lastname || null,
+        reason: "Demande envoyée depuis l’application",
+        status: "pending",
+      });
+
+    setSendingDeletionRequest(false);
+
+    if (error) {
+      alert("La demande n’a pas pu être envoyée : " + error.message);
+      return;
+    }
+
+    setDeletionRequestSent(true);
+    alert("Ta demande de suppression a bien été envoyée au club.");
+  }
 
   async function markDeletionRequestProcessed(requestId: string) {
     if (!isAdmin) return;
@@ -2341,6 +2384,7 @@ await supabase.auth.signOut();
     setShowMenu(false);
     setIsApproved(false);
     setIsActive(true);
+    setDeletionRequestSent(false);
     setProfileLoaded(true);
   }
 
@@ -4025,6 +4069,35 @@ if (isPasswordRecovery) {
               </div>
 
               
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => setShowPrivacyPolicy((value) => !value)}
+                style={{ marginTop: 12, opacity: 0.85 }}
+              >
+                {showPrivacyPolicy ? "Masquer la politique" : "Lire la politique de confidentialité"}
+              </button>
+              {showPrivacyPolicy && <PrivacyPolicyBlock />}
+
+<div className="personal-goal-card">
+                <h3>Suppression du compte</h3>
+                <p>
+                  Tu peux demander la suppression de ton compte et des données associées.
+                  Un administrateur du club traitera la demande.
+                </p>
+                {deletionRequestSent ? (
+                  <p className="empty-message">Demande de suppression envoyée. Elle est en attente de traitement.</p>
+                ) : (
+                  <button
+                    type="button"
+                    className="danger-btn"
+                    onClick={requestAccountDeletion}
+                    disabled={sendingDeletionRequest}
+                  >
+                    {sendingDeletionRequest ? "Envoi en cours..." : "Demander la suppression de mon compte"}
+                  </button>
+                )}
+              </div>
 
               <button className="primary-btn" onClick={saveMyProfile}>Enregistrer le profil</button>
             </div>
