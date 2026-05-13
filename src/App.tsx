@@ -4019,7 +4019,7 @@ if (isPasswordRecovery) {
               </div>
 
               <div className="form-row">
-                <label>FC de réserve</label>
+                <label>FC max</label>
                 <input type="number" value={profileFcMax} onChange={(e) => setProfileFcMax(e.target.value)} placeholder="Ex : 190" />
               </div>
 
@@ -4032,6 +4032,19 @@ if (isPasswordRecovery) {
                   placeholder="Ex : 48"
                 />
               </div>
+
+              <div className="zone-info-box" style={{ marginTop: 14 }}>
+                <p>
+                  <strong>🫀 FC de réserve calculée : </strong>
+                  {Number(profileFcMax) > 0 && Number(profileFcRest) > 0
+                    ? `${Number(profileFcMax) - Number(profileFcRest)} bpm`
+                    : "renseigne ta FC max et ta FC au repos"}
+                </p>
+                <p style={{ marginTop: 8, opacity: 0.85 }}>
+                  FC de réserve = FC max − FC au repos. Elle sert à personnaliser tes zones cardio avec la méthode de Karvonen.
+                </p>
+              </div>
+
 
               <div className="personal-goal-card">
                 <h3>Estimer ma VMA</h3>
