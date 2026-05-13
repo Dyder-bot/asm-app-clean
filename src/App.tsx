@@ -1,6 +1,6 @@
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { motion } from "framer-motion";
 import "./App.css";
@@ -1346,6 +1346,8 @@ export default function CalendarApp() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+  const selectedSessionHistoryIdRef = useRef<string | null>(null);
+  const closingSessionFromBrowserBackRef = useRef(false);
   const [editingSession, setEditingSession] = useState<Session | null>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
 
@@ -1739,6 +1741,57 @@ const [newPassword, setNewPassword] = useState("");
       .catch(() => {
         // L'application continue de fonctionner même si le service worker n'est pas disponible.
       });
+  }, []);
+
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const currentSessionId = selectedSession?.id ?? null;
+
+    if (!currentSessionId) {
+      selectedSessionHistoryIdRef.current = null;
+      closingSessionFromBrowserBackRef.current = false;
+      return;
+    }
+
+    if (selectedSessionHistoryIdRef.current === currentSessionId) return;
+
+    selectedSessionHistoryIdRef.current = currentSessionId;
+
+    if (closingSessionFromBrowserBackRef.current) {
+      closingSessionFromBrowserBackRef.current = false;
+      return;
+    }
+
+    const currentHistoryState = window.history.state || {};
+    if (currentHistoryState?.asmSelectedSessionId === currentSessionId) return;
+
+    window.history.pushState(
+      { ...currentHistoryState, asmSelectedSessionId: currentSessionId },
+      "",
+      window.location.href
+    );
+  }, [selectedSession?.id]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleBrowserBack = () => {
+      if (!selectedSessionHistoryIdRef.current) return;
+
+      closingSessionFromBrowserBackRef.current = true;
+      setSelectedSession(null);
+      setShowParticipantList(null);
+      setOpenPartnerSuggestionKey(null);
+      setShowGpxMap(false);
+    };
+
+    window.addEventListener("popstate", handleBrowserBack);
+
+    return () => {
+      window.removeEventListener("popstate", handleBrowserBack);
+    };
   }, []);
 
   useEffect(() => {
