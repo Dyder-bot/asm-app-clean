@@ -1729,6 +1729,16 @@ const [newPassword, setNewPassword] = useState("");
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
+
+    navigator.serviceWorker
+      .register("/asm-sw.js")
+      .catch(() => {
+        // L'application continue de fonctionner même si le service worker n'est pas disponible.
+      });
+  }, []);
+
+  useEffect(() => {
     if (!user) return;
 
     const channel = supabase
@@ -1743,7 +1753,7 @@ const [newPassword, setNewPassword] = useState("");
             return [...current, newSession].sort((a, b) => a.date.localeCompare(b.date));
           });
 
-          showAsmNotification(
+          void showAsmNotification(
             "Nouvelle séance ASM",
             `${newSession.title} • ${new Date(newSession.date).toLocaleDateString("fr-FR")}${newSession.start_time ? ` à ${newSession.start_time}` : ""}`
           );
@@ -2749,12 +2759,23 @@ await supabase.auth.signOut();
     return typeof window !== "undefined" && "Notification" in window;
   }
 
-  function showAsmNotification(title: string, body: string, force = false) {
+  async function showAsmNotification(title: string, body: string, force = false) {
     if (!browserNotificationsAvailable()) return false;
     if (!force && !notificationsEnabled) return false;
     if (Notification.permission !== "granted") return false;
 
     try {
+      if ("serviceWorker" in navigator) {
+        const registration = await navigator.serviceWorker.ready;
+        await registration.showNotification(title, {
+          body,
+          icon: "/logo-asm.png",
+          badge: "/logo-asm.png",
+          tag: "asm-course-a-pied",
+        });
+        return true;
+      }
+
       new Notification(title, {
         body,
         icon: "/logo-asm.png",
@@ -2762,8 +2783,12 @@ await supabase.auth.signOut();
       });
       return true;
     } catch {
-      // Certains navigateurs mobiles limitent les notifications hors service worker.
-      return false;
+      try {
+        new Notification(title, { body });
+        return true;
+      } catch {
+        return false;
+      }
     }
   }
 
@@ -2801,7 +2826,7 @@ await supabase.auth.signOut();
     setNotificationsEnabled(true);
     window.localStorage.setItem("asm-notifications", "true");
 
-    const sent = showAsmNotification(
+    const sent = await showAsmNotification(
       "Notifications ASM activées",
       "Tu recevras une alerte quand une nouvelle séance sera ajoutée pendant que l’application est ouverte.",
       true
@@ -2844,7 +2869,7 @@ await supabase.auth.signOut();
     setNotificationsEnabled(true);
     window.localStorage.setItem("asm-notifications", "true");
 
-    const sent = showAsmNotification(
+    const sent = await showAsmNotification(
       "Test notification ASM",
       "Si tu vois ce message, les notifications fonctionnent sur cet appareil.",
       true
@@ -2852,7 +2877,7 @@ await supabase.auth.signOut();
 
     setNotificationFeedback(sent
       ? "Notification test envoyée. Si elle ne s’affiche pas, vérifie aussi les réglages système de ton téléphone ou ordinateur."
-      : "Autorisation OK, mais ce navigateur n’a pas affiché la notification. Sur iPhone, installe l’application sur l’écran d’accueil."
+      : "Autorisation OK, mais ce navigateur n’a pas affiché la notification. Sur Android, vérifie les autorisations de Chrome et installe l’application en PWA si besoin."
     );
   }
 
@@ -4180,9 +4205,9 @@ if (isPasswordRecovery) {
               )}
 
               <p style={{ marginTop: 14, fontSize: 13, opacity: 0.75 }}>
-                Version simple : pas besoin de nouvelle table Supabase. Les alertes fonctionnent surtout quand l’application
-                est ouverte ou installée en PWA. Pour recevoir des alertes même application fermée, il faudra ensuite ajouter
-                un vrai service worker push.
+                Version simple : pas besoin de nouvelle table Supabase. Les alertes locales fonctionnent avec l’application
+                ouverte ou installée en PWA. Pour prévenir tous les adhérents même application fermée, il faudra ensuite ajouter
+                un vrai service push côté serveur.
               </p>
             </div>
           </section>
