@@ -1313,6 +1313,7 @@ export default function CalendarApp() {
   const [deletionRequests, setDeletionRequests] = useState<AccountDeletionRequest[]>([]);
   const [deletionRequestSent, setDeletionRequestSent] = useState(false);
   const [sendingDeletionRequest, setSendingDeletionRequest] = useState(false);
+  const [showAccountDeletionPanel, setShowAccountDeletionPanel] = useState(false);
   const [approvingProfileId, setApprovingProfileId] = useState<string | null>(null);
   const [approvingAdminProfileId, setApprovingAdminProfileId] = useState<string | null>(null);
   const [deactivatingProfileId, setDeactivatingProfileId] = useState<string | null>(null);
@@ -4085,25 +4086,40 @@ if (isPasswordRecovery) {
 <button className="primary-btn" onClick={saveMyProfile}>Enregistrer le profil</button>
               </div>
 
-<div className="personal-goal-card" style={{ marginTop: 28 }}>
-                <h3>Suppression du compte</h3>
-                <p>
-                  Tu peux demander la suppression de ton compte et des données associées.
-                  Un administrateur du club traitera la demande.
-                </p>
-                {deletionRequestSent ? (
-                  <p className="empty-message">Demande de suppression envoyée. Elle est en attente de traitement.</p>
-                ) : (
+
+              <div style={{ marginTop: 18 }}>
+                <button
+                  type="button"
+                  className="danger-btn"
+                  onClick={() => setShowAccountDeletionPanel((open) => !open)}
+                >
+                  Supprimer mon compte
+                </button>
+              </div>
+
+              {showAccountDeletionPanel && (
+                <div className="profile-card" style={{ marginTop: 18 }}>
+                  <h2>Suppression du compte</h2>
+                  <p>
+                    Tu peux demander la suppression de ton compte et des données associées.
+                    Un administrateur du club traitera la demande.
+                  </p>
+
                   <button
                     type="button"
                     className="danger-btn"
                     onClick={requestAccountDeletion}
-                    disabled={sendingDeletionRequest}
+                    disabled={sendingDeletionRequest || deletionRequestSent}
                   >
-                    {sendingDeletionRequest ? "Envoi en cours..." : "Demander la suppression de mon compte"}
+                    {deletionRequestSent
+                      ? "Demande de suppression envoyée"
+                      : sendingDeletionRequest
+                      ? "Envoi de la demande..."
+                      : "Demander la suppression de mon compte"}
                   </button>
-                )}
-              </div>
+                </div>
+              )}
+
 
               
             </div>
