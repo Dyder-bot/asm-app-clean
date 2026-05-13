@@ -2109,35 +2109,6 @@ async function toggleAdminProfile(profileId: string, makeAdmin: boolean) {
     alert("Profil enregistré");
   }
 
-  async function requestAccountDeletion() {
-    if (!user || sendingDeletionRequest || deletionRequestSent) return;
-
-    const confirmRequest = window.confirm(
-      "Confirmer la demande de suppression de ton compte ? Un administrateur du club traitera ensuite la demande."
-    );
-
-    if (!confirmRequest) return;
-
-    setSendingDeletionRequest(true);
-
-    const { error } = await supabase
-      .from("account_deletion_requests")
-      .insert({
-        user_id: user.id,
-        email: user.email || email || null,
-        firstname: firstname || null,
-        lastname: lastname || null,
-        reason: "Demande envoyée depuis l’application",
-        status: "pending",
-      });
-
-    setSendingDeletionRequest(false);
-
-    if (error) {
-      alert("La demande n’a pas pu être envoyée : " + error.message);
-      return;
-    }
-
     setDeletionRequestSent(true);
     alert("Ta demande de suppression a bien été envoyée au club.");
   }
