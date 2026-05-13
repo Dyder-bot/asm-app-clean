@@ -610,28 +610,49 @@ function isRaceSession(session?: Pick<Session, "type" | "title" | "description">
 
 type PartnerCompatibilityType = "vma" | "threshold" | "trail";
 
-const PARTNER_COMPATIBILITY_MESSAGES: Record<PartnerCompatibilityType, string[]> = {
-  vma: [
-    "🤝 Ce soir, tu peux te rapprocher de {names} pour garder le bon rythme sur la séance.",
-    "⚡ Vous avez des allures proches ce soir avec {names}. Une bonne occasion de faire une grosse séance ensemble.",
-    "🎯 Pour tenir les intensités prévues, tu peux partager la séance avec {names}.",
-    "🏃 Vous êtes plusieurs à avoir des rythmes compatibles aujourd’hui : {names}.",
-    "💪 Une séance de qualité se fait souvent à plusieurs. Tu peux te rapprocher de {names}.",
-  ],
-  threshold: [
-    "🎯 Tu peux te rapprocher de {names} pour travailler dans les mêmes zones ce soir.",
-    "🔥 Les allures prévues sont proches entre toi et {names}.",
-    "⚡ Pour rester régulier sur les blocs, {names} ont des intensités similaires aux tiennes.",
-    "🤝 Vous êtes plusieurs à pouvoir faire une très bonne séance ensemble ce soir : {names}.",
-    "🏃 Garder le bon rythme est souvent plus facile à plusieurs. Tu peux partager la séance avec {names}.",
-  ],
-  trail: [
-    "⛰️ Tu peux faire la séance avec {names}, vos zones d’effort sont proches ce soir.",
-    "🏔️ Vous avez des intensités compatibles pour travailler ensemble dans les côtes : {names}.",
-    "🔥 En montée aussi, courir à plusieurs aide à garder le bon engagement. {names} sont sur des intensités similaires.",
-    "🤝 N’hésite pas à partager la séance avec {names} pour rester dans les bonnes zones d’effort.",
-    "⚡ Vous devriez bien vous entendre sur cette séance spécifique avec {names}.",
-  ],
+const PARTNER_COMPATIBILITY_MESSAGES: Record<PartnerCompatibilityType, { single: string[]; multiple: string[] }> = {
+  vma: {
+    single: [
+      "🤝 Si {names} choisit la même option que toi, vous pouvez faire une belle séance ensemble.",
+      "⚡ {names} est sur des repères proches des tiens. Si vous partez sur la même option, n’hésite pas à te rapprocher d’elle/lui.",
+      "🎯 {names} semble compatible avec ton allure. Si vous faites le même exercice, vous pourrez vous aider à garder le bon rythme.",
+      "🏃 {names} est dans une zone proche de la tienne. Si vous choisissez la même séance, ça peut être motivant de la faire ensemble.",
+    ],
+    multiple: [
+      "🤝 Si {names} choisissent la même option que toi, vous pouvez faire une belle séance ensemble.",
+      "⚡ {names} sont sur des repères proches des tiens. Si vous partez sur la même option, n’hésite pas à te rapprocher d’eux.",
+      "🎯 {names} semblent compatibles avec ton allure. Si vous faites le même exercice, vous pourrez vous aider à garder le bon rythme.",
+      "🏃 {names} sont dans une zone proche de la tienne. Si vous choisissez la même séance, ça peut être motivant de la faire ensemble.",
+    ],
+  },
+  threshold: {
+    single: [
+      "🎯 {names} est sur des zones d’effort proches des tiennes. Si elle/il choisit la même option, vous pouvez travailler ensemble.",
+      "🔥 Si {names} part sur la même séance que toi, vous devriez pouvoir tenir un effort similaire.",
+      "⚡ {names} semble compatible avec ton niveau sur ce type d’effort. Si vous choisissez le même bloc, rapprochez-vous.",
+      "🤝 Si {names} fait la même option que toi, cela peut vous aider à rester réguliers dans les bonnes zones.",
+    ],
+    multiple: [
+      "🎯 {names} sont sur des zones d’effort proches des tiennes. S’ils choisissent la même option, vous pouvez travailler ensemble.",
+      "🔥 Si {names} partent sur la même séance que toi, vous devriez pouvoir tenir un effort similaire.",
+      "⚡ {names} semblent compatibles avec ton niveau sur ce type d’effort. Si vous choisissez le même bloc, rapprochez-vous.",
+      "🤝 Si {names} font la même option que toi, cela peut vous aider à rester réguliers dans les bonnes zones.",
+    ],
+  },
+  trail: {
+    single: [
+      "⛰️ {names} est sur des repères proches des tiens. Si elle/il choisit la même option, vous pouvez bien travailler ensemble.",
+      "🏔️ Si {names} part sur le même exercice que toi, vous devriez pouvoir gérer les côtes dans des zones similaires.",
+      "🔥 {names} semble compatible avec ton effort sur ce type de séance. Si vous faites la même option, n’hésite pas à te rapprocher d’elle/lui.",
+      "🤝 Si {names} choisit la même séance que toi, vous pourrez vous motiver tout en restant dans les bonnes zones d’effort.",
+    ],
+    multiple: [
+      "⛰️ {names} sont sur des repères proches des tiens. S’ils choisissent la même option, vous pouvez bien travailler ensemble.",
+      "🏔️ Si {names} partent sur le même exercice que toi, vous devriez pouvoir gérer les côtes dans des zones similaires.",
+      "🔥 {names} semblent compatibles avec ton effort sur ce type de séance. Si vous faites la même option, n’hésite pas à te rapprocher d’eux.",
+      "🤝 Si {names} choisissent la même séance que toi, vous pourrez vous motiver tout en restant dans les bonnes zones d’effort.",
+    ],
+  },
 };
 
 function getPartnerCompatibilityType(session: Pick<Session, "title" | "description" | "type"> | null, goalLabel = ""): PartnerCompatibilityType | null {
@@ -678,7 +699,11 @@ function formatPartnerNames(names: string[]) {
 }
 
 function buildPartnerMessage(names: string[], compatibilityType: PartnerCompatibilityType) {
-  const library = PARTNER_COMPATIBILITY_MESSAGES[compatibilityType];
+  const library =
+    names.length <= 1
+      ? PARTNER_COMPATIBILITY_MESSAGES[compatibilityType].single
+      : PARTNER_COMPATIBILITY_MESSAGES[compatibilityType].multiple;
+
   const index = names.join("").length % library.length;
   return library[index].replace("{names}", formatPartnerNames(names));
 }
@@ -2136,6 +2161,40 @@ async function toggleAdminProfile(profileId: string, makeAdmin: boolean) {
   }
 
   async function fetchParticipants(sessionId: string) {
+    /*
+      Lecture sécurisée pour tous les adhérents :
+      - l'app essaie d'abord d'utiliser la fonction Supabase RPC
+        get_session_participants_for_matching(session_id)
+      - cette fonction ne renvoie que les infos utiles à la séance :
+        prénom, nom, pseudo, VMA, statut
+      - cela évite de donner un accès admin complet aux profils.
+    */
+    const { data: rpcRows, error: rpcError } = await supabase.rpc(
+      "get_session_participants_for_matching",
+      { target_session_id: sessionId }
+    );
+
+    if (!rpcError && rpcRows) {
+      const enriched = (rpcRows || []).map((row: any) => ({
+        id: row.id,
+        session_id: row.session_id,
+        user_id: row.user_id,
+        status: row.status,
+        firstname: row.pseudo || row.firstname || "Adhérent",
+        lastname: row.pseudo ? "" : row.lastname || "",
+        vma: row.vma ?? null,
+      }));
+
+      setParticipants(enriched as Participant[]);
+      return;
+    }
+
+    /*
+      Fallback ancien comportement :
+      utile tant que la fonction SQL n'est pas encore créée.
+      Pour un adhérent non-admin, ce fallback peut ne pas récupérer les VMA
+      si les politiques RLS de profiles sont restrictives.
+    */
     const { data: rows, error } = await supabase
       .from("participants")
       .select("id, session_id, user_id, status")
