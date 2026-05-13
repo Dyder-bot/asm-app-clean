@@ -1324,6 +1324,7 @@ export default function CalendarApp() {
   const [approvedProfiles, setApprovedProfiles] = useState<MemberProfile[]>([]);
   const [deletionRequests, setDeletionRequests] = useState<AccountDeletionRequest[]>([]);
   const [clubMessages, setClubMessages] = useState<ClubMessage[]>([]);
+  const [unreadClubMessageCount, setUnreadClubMessageCount] = useState(0);
   const [clubMessagesLoading, setClubMessagesLoading] = useState(false);
   const [clubMessageFeedback, setClubMessageFeedback] = useState("");
   const [newClubMessageTitle, setNewClubMessageTitle] = useState("");
@@ -1401,6 +1402,71 @@ const [newPassword, setNewPassword] = useState("");
   const [importingPlan, setImportingPlan] = useState(false);
 
 
+  function openTab(tab: AppTab) {
+    if (tab !== activeTab && typeof window !== "undefined") {
+      const currentHistoryState = window.history.state || {};
+      window.history.pushState(
+        { ...currentHistoryState, asmActiveTab: tab },
+        "",
+        window.location.href
+      );
+    }
+
+    setActiveTab(tab);
+    setShowMenu(false);
+
+    if (tab === "news") {
+      fetchClubMessages();
+    }
+
+    if (tab === "admin") {
+      refreshAdminLists();
+    }
+  }
+
+
+  async function refreshClubMessageUnreadCount(messagesToCheck: ClubMessage[] = clubMessages) {
+    if (!user || messagesToCheck.length === 0) {
+      setUnreadClubMessageCount(0);
+      return;
+    }
+
+    const messageIds = messagesToCheck.map((message) => message.id);
+
+    const { data, error } = await supabase
+      .from("club_message_reads")
+      .select("message_id")
+      .eq("user_id", user.id)
+      .in("message_id", messageIds);
+
+    if (error) {
+      // Si la table des lectures n'est pas encore créée, on évite de bloquer l'application.
+      setUnreadClubMessageCount(0);
+      return;
+    }
+
+    const readIds = new Set((data || []).map((row: any) => row.message_id));
+    setUnreadClubMessageCount(messagesToCheck.filter((message) => !readIds.has(message.id)).length);
+  }
+
+  async function markClubMessagesAsRead(messagesToMark: ClubMessage[] = clubMessages) {
+    if (!user || messagesToMark.length === 0) return;
+
+    const rows = messagesToMark.map((message) => ({
+      user_id: user.id,
+      message_id: message.id,
+      read_at: new Date().toISOString(),
+    }));
+
+    const { error } = await supabase
+      .from("club_message_reads")
+      .upsert(rows, { onConflict: "user_id,message_id" });
+
+    if (!error) {
+      setUnreadClubMessageCount(0);
+    }
+  }
+
   async function fetchClubMessages() {
     if (!user) return;
 
@@ -1417,8 +1483,16 @@ const [newPassword, setNewPassword] = useState("");
     if (error) {
       setClubMessageFeedback("Impossible de charger les actualités du club. Vérifie que la table Supabase club_messages est bien créée.");
       setClubMessages([]);
+      setUnreadClubMessageCount(0);
     } else {
-      setClubMessages((data || []) as ClubMessage[]);
+      const messages = (data || []) as ClubMessage[];
+      setClubMessages(messages);
+
+      if (activeTab === "news") {
+        await markClubMessagesAsRead(messages);
+      } else {
+        await refreshClubMessageUnreadCount(messages);
+      }
     }
 
     setClubMessagesLoading(false);
@@ -1479,6 +1553,12 @@ const [newPassword, setNewPassword] = useState("");
   useEffect(() => {
     fetchClubMessages();
   }, [user?.id]);
+
+  useEffect(() => {
+    if (activeTab === "news" && clubMessages.length > 0) {
+      markClubMessagesAsRead(clubMessages);
+    }
+  }, [activeTab, clubMessages.length]);
 
   const chronoEvolutionGroups = useMemo(() => {
     type ChronoEvolutionItem = {
@@ -1868,13 +1948,19 @@ const [newPassword, setNewPassword] = useState("");
     if (typeof window === "undefined") return;
 
     const handleBrowserBack = () => {
-      if (!selectedSessionHistoryIdRef.current) return;
+      if (selectedSessionHistoryIdRef.current) {
+        closingSessionFromBrowserBackRef.current = true;
+        setSelectedSession(null);
+        setShowParticipantList(null);
+        setOpenPartnerSuggestionKey(null);
+        setShowGpxMap(false);
+        return;
+      }
 
-      closingSessionFromBrowserBackRef.current = true;
-      setSelectedSession(null);
-      setShowParticipantList(null);
-      setOpenPartnerSuggestionKey(null);
-      setShowGpxMap(false);
+      if (activeTab !== "calendar") {
+        setActiveTab("calendar");
+        setShowMenu(false);
+      }
     };
 
     window.addEventListener("popstate", handleBrowserBack);
@@ -1882,7 +1968,7 @@ const [newPassword, setNewPassword] = useState("");
     return () => {
       window.removeEventListener("popstate", handleBrowserBack);
     };
-  }, []);
+  }, [activeTab]);
 
   useEffect(() => {
     if (!user) return;
@@ -3369,32 +3455,24 @@ if (isPasswordRecovery) {
         </div>
 
         <nav className="side-nav">
-          <button className={activeTab === "calendar" ? "active" : ""} onClick={() => { setActiveTab("calendar"); setShowMenu(false); }}>📅 Calendrier</button>
-          <button className={activeTab === "news" ? "active" : ""} onClick={() => { setActiveTab("news"); setShowMenu(false); fetchClubMessages(); }}>📰 Actualités ASM{clubMessages.length > 0 ? ` (${clubMessages.length})` : ""}</button>
-          <button className={activeTab === "mySessions" ? "active" : ""} onClick={() => { setActiveTab("mySessions"); setShowMenu(false); }}>🎯 Mes zones cibles</button>
-          <button className={activeTab === "chronos" ? "active" : ""} onClick={() => { setActiveTab("chronos"); setShowMenu(false); }}>🏆 Mes chronos</button>
-          <button className={activeTab === "profile" ? "active" : ""} onClick={() => { setActiveTab("profile"); setShowMenu(false); }}>⚙️ Profil</button>
-          <button className={activeTab === "notifications" ? "active" : ""} onClick={() => { setActiveTab("notifications"); setShowMenu(false); }}>🔔 Notifications</button>
+          <button className={activeTab === "calendar" ? "active" : ""} onClick={() => openTab("calendar")}>📅 Calendrier</button>
+          <button className={activeTab === "mySessions" ? "active" : ""} onClick={() => openTab("mySessions")}>🎯 Mes zones cibles</button>
+          <button className={activeTab === "chronos" ? "active" : ""} onClick={() => openTab("chronos")}>🏆 Mes chronos</button>
+          <button className={activeTab === "profile" ? "active" : ""} onClick={() => openTab("profile")}>⚙️ Profil</button>
+          <button className={activeTab === "notifications" ? "active" : ""} onClick={() => openTab("notifications")}>🔔 Notifications</button>
 
           {isAdmin && (
             <>
               <button
                 className={activeTab === "admin" ? "active" : ""}
-                onClick={() => {
-                  setActiveTab("admin");
-                  setShowMenu(false);
-                  refreshAdminLists();
-                }}
+                onClick={() => openTab("admin") }
               >
                 ✅ Demandes d’accès{pendingProfiles.length + deletionRequests.length > 0 ? ` (${pendingProfiles.length + deletionRequests.length})` : ""}
               </button>
 
               <button
                 className={activeTab === "importPlan" ? "active" : ""}
-                onClick={() => {
-                  setActiveTab("importPlan");
-                  setShowMenu(false);
-                }}
+                onClick={() => openTab("importPlan") }
               >
                 📥 Importer un plan
               </button>
@@ -3408,6 +3486,47 @@ if (isPasswordRecovery) {
           <span>Club</span>
           <strong>ASM Pau</strong>
           <small>Version moderne</small>
+
+          <button
+            type="button"
+            onClick={() => openTab("news")}
+            style={{
+              marginTop: 14,
+              width: "100%",
+              border: "1px solid rgba(221, 246, 77, 0.35)",
+              borderRadius: 18,
+              padding: "12px 14px",
+              background: activeTab === "news" ? "rgba(221, 246, 77, 0.16)" : "rgba(255, 255, 255, 0.04)",
+              color: "inherit",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            <span>📰 Actualités</span>
+            {unreadClubMessageCount > 0 && (
+              <span
+                style={{
+                  minWidth: 26,
+                  height: 26,
+                  padding: "0 8px",
+                  borderRadius: 999,
+                  background: "#DDF64D",
+                  color: "#10140B",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 13,
+                  fontWeight: 900,
+                }}
+              >
+                {unreadClubMessageCount}
+              </span>
+            )}
+          </button>
         </div>
       </aside>
 
