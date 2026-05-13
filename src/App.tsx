@@ -5355,7 +5355,7 @@ if (isPasswordRecovery) {
                 </div>
               </div>
             )}
-
+ 
             {!mapLoaded && (
               <p className="map-loading">Chargement du parcours...</p>
             )}
