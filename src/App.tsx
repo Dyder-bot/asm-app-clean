@@ -2109,9 +2109,6 @@ async function toggleAdminProfile(profileId: string, makeAdmin: boolean) {
     alert("Profil enregistré");
   }
 
-    setDeletionRequestSent(true);
-    alert("Ta demande de suppression a bien été envoyée au club.");
-  }
 
   async function markDeletionRequestProcessed(requestId: string) {
     if (!isAdmin) return;
