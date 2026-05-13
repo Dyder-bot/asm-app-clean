@@ -2781,7 +2781,6 @@ await supabase.auth.signOut();
           icon: "/logo-asm.png",
           badge: "/logo-asm.png",
           tag: "asm-course-a-pied",
-          renotify: true,
         });
         return true;
       }
