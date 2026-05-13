@@ -1679,30 +1679,8 @@ const [newPassword, setNewPassword] = useState("");
 
 
 
-  useEffect(() => {
-    if (!selectedSession || myParticipation !== "present") return;
 
-    if (selectedRaceProjections.length === 1) {
-      const raceGoal = selectedRaceProjections[0];
-      const label = raceGoal.kind === "trail" ? raceGoal.distance : raceGoalShortLabel(raceGoal.distance);
-      saveSelectedGoalLabel(label);
-      return;
-    }
 
-    if (personalGoals.length === 1) {
-      const goal = personalGoals[0];
-      const label = (() => {
-        if (goal.type === "vma") {
-          if (goal.isTimeBased) {
-            return `${goal.repetitions || ""} × ${formatDuration(goal.timeSeconds)}`.trim();
-          }
-          return `${goal.repetitions ? `${goal.repetitions} × ` : ""}${goal.distance} m`;
-        }
-        return goal.title || goal.label || "Séance";
-      })();
-      saveSelectedGoalLabel(label);
-    }
-  }, [selectedSession?.id, myParticipation, selectedRaceProjections.length, personalGoals.length]);
 
 
   const sessionsByDate = useMemo(() => {
@@ -1738,6 +1716,23 @@ const [newPassword, setNewPassword] = useState("");
         return textGoals.length > 0 ? textGoals : structuredGoal ? [structuredGoal] : [];
       })()
     : [];
+
+  useEffect(() => {
+    if (!selectedSession || myParticipation !== "present") return;
+
+    if (selectedRaceProjections.length === 1) {
+      const raceGoal = selectedRaceProjections[0];
+      const label = raceGoal.kind === "trail" ? raceGoal.distance : raceGoalShortLabel(raceGoal.distance);
+      saveSelectedGoalLabel(label);
+      return;
+    }
+
+    if (personalGoals.length === 1) {
+      const label = getPersonalGoalLabel(personalGoals[0], "Séance");
+      saveSelectedGoalLabel(label);
+    }
+  }, [selectedSession?.id, myParticipation, selectedRaceProjections.length, personalGoals.length]);
+
 
   useEffect(() => {
   supabase.auth.getUser().then(({ data }) => {
@@ -2699,6 +2694,32 @@ await supabase.auth.signOut();
   }
 
 
+
+  function getPersonalGoalLabel(goal: any, fallback = "Séance") {
+    if (!goal) return fallback;
+
+    if (goal.type === "vma") {
+      if (goal.isTimeBased) {
+        return `${goal.repetitions || ""} × ${formatDuration(goal.timeSeconds)}`.trim();
+      }
+      return `${goal.repetitions ? `${goal.repetitions} × ` : ""}${goal.distance} m`;
+    }
+
+    if (goal.type === "fc") {
+      return goal.percent ? `${goal.percent}% FC de réserve` : fallback;
+    }
+
+    if (goal.type === "seuil") {
+      return goal.title || goal.label || "Seuil";
+    }
+
+    if (goal.type === "allure") {
+      return goal.title || goal.label || "Allure spécifique";
+    }
+
+    return goal.title || goal.label || fallback;
+  }
+
   function getCurrentOpenedGoalLabel() {
     if (selectedGoalIndex === null) return null;
 
@@ -2718,7 +2739,7 @@ await supabase.auth.signOut();
         return `${goal.repetitions ? `${goal.repetitions} × ` : ""}${goal.distance} m`;
       }
 
-      return goal.title || goal.label || `Séance ${selectedGoalIndex + 1}`;
+      return getPersonalGoalLabel(goal, `Séance ${selectedGoalIndex + 1}`);
     }
 
     return null;
