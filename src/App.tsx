@@ -568,6 +568,27 @@ function estimateVmaFromRace(distanceKm: number, totalMinutes: number) {
   else if (distanceKm <= 23) percent = 0.85;
   else percent = 0.8;
 
+  useEffect(() => {
+    const handlePopState = () => {
+      if (selectedSession) {
+        setSelectedSession(null);
+        return;
+      }
+
+      if (activeMenu && activeMenu !== "calendar") {
+        setActiveMenu("calendar");
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [selectedSession, activeMenu]);
+
+
+
   return (speed / percent).toFixed(1);
 }
 
