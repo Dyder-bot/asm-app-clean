@@ -43,7 +43,7 @@ const RACE_COLORS = {
 
 const WEEK_DAYS = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
 
-type AppTab = "calendar" | "mySessions" | "chronos" | "profile" | "notifications" | "admin" | "importPlan";
+type AppTab = "calendar" | "news" | "mySessions" | "chronos" | "profile" | "notifications" | "admin" | "importPlan";
 type ParticipationStatus = "present" | "interested";
 type WorkoutMode = "" | "vma" | "fc" | "seuil" | "10km" | "allure";
 
@@ -98,6 +98,18 @@ type AccountDeletionRequest = {
   status?: string | null;
   created_at?: string | null;
   processed_at?: string | null;
+};
+
+type ClubMessage = {
+  id: string;
+  title: string;
+  content: string;
+  link_url?: string | null;
+  link_label?: string | null;
+  important?: boolean | null;
+  published?: boolean | null;
+  created_by?: string | null;
+  created_at?: string | null;
 };
 
 
@@ -567,27 +579,6 @@ function estimateVmaFromRace(distanceKm: number, totalMinutes: number) {
   else if (distanceKm <= 11) percent = 0.9;
   else if (distanceKm <= 23) percent = 0.85;
   else percent = 0.8;
-
-  useEffect(() => {
-    const handlePopState = () => {
-      if (selectedSession) {
-        setSelectedSession(null);
-        return;
-      }
-
-      if (activeMenu && activeMenu !== "calendar") {
-        setActiveMenu("calendar");
-      }
-    };
-
-    window.addEventListener("popstate", handlePopState);
-
-    return () => {
-      window.removeEventListener("popstate", handlePopState);
-    };
-  }, [selectedSession, activeMenu]);
-
-
 
   return (speed / percent).toFixed(1);
 }
@@ -1332,6 +1323,15 @@ export default function CalendarApp() {
   const [pendingProfiles, setPendingProfiles] = useState<MemberProfile[]>([]);
   const [approvedProfiles, setApprovedProfiles] = useState<MemberProfile[]>([]);
   const [deletionRequests, setDeletionRequests] = useState<AccountDeletionRequest[]>([]);
+  const [clubMessages, setClubMessages] = useState<ClubMessage[]>([]);
+  const [clubMessagesLoading, setClubMessagesLoading] = useState(false);
+  const [clubMessageFeedback, setClubMessageFeedback] = useState("");
+  const [newClubMessageTitle, setNewClubMessageTitle] = useState("");
+  const [newClubMessageContent, setNewClubMessageContent] = useState("");
+  const [newClubMessageLinkUrl, setNewClubMessageLinkUrl] = useState("");
+  const [newClubMessageLinkLabel, setNewClubMessageLinkLabel] = useState("");
+  const [newClubMessageImportant, setNewClubMessageImportant] = useState(false);
+  const [publishingClubMessage, setPublishingClubMessage] = useState(false);
   const [deletionRequestSent, setDeletionRequestSent] = useState(false);
   const [sendingDeletionRequest, setSendingDeletionRequest] = useState(false);
   const [showAccountDeletionPanel, setShowAccountDeletionPanel] = useState(false);
@@ -1400,6 +1400,71 @@ const [newPassword, setNewPassword] = useState("");
   const [importedSessions, setImportedSessions] = useState<ImportedPlanSession[]>([]);
   const [importingPlan, setImportingPlan] = useState(false);
 
+
+  async function fetchClubMessages() {
+    if (!user) return;
+
+    setClubMessagesLoading(true);
+    setClubMessageFeedback("");
+
+    const { data, error } = await supabase
+      .from("club_messages")
+      .select("id,title,content,link_url,link_label,important,published,created_by,created_at")
+      .eq("published", true)
+      .order("created_at", { ascending: false })
+      .limit(30);
+
+    if (error) {
+      setClubMessageFeedback("Impossible de charger les actualités du club. Vérifie que la table Supabase club_messages est bien créée.");
+      setClubMessages([]);
+    } else {
+      setClubMessages((data || []) as ClubMessage[]);
+    }
+
+    setClubMessagesLoading(false);
+  }
+
+  async function publishClubMessage() {
+    if (!user || !isAdmin) return;
+
+    const title = newClubMessageTitle.trim();
+    const content = newClubMessageContent.trim();
+    const linkUrl = newClubMessageLinkUrl.trim();
+    const linkLabel = newClubMessageLinkLabel.trim();
+
+    if (!title || !content) {
+      setClubMessageFeedback("Ajoute au moins un titre et un message.");
+      return;
+    }
+
+    setPublishingClubMessage(true);
+    setClubMessageFeedback("");
+
+    const { error } = await supabase.from("club_messages").insert({
+      title,
+      content,
+      link_url: linkUrl || null,
+      link_label: linkLabel || (linkUrl ? "Ouvrir le lien" : null),
+      important: newClubMessageImportant,
+      published: true,
+      created_by: user.id,
+    });
+
+    if (error) {
+      setClubMessageFeedback("Erreur publication : " + error.message);
+    } else {
+      setNewClubMessageTitle("");
+      setNewClubMessageContent("");
+      setNewClubMessageLinkUrl("");
+      setNewClubMessageLinkLabel("");
+      setNewClubMessageImportant(false);
+      setClubMessageFeedback("Actualité publiée dans l’application.");
+      await fetchClubMessages();
+    }
+
+    setPublishingClubMessage(false);
+  }
+
   const chronoStorageKey = user?.id ? `asm-personal-chronos-${user.id}` : "asm-personal-chronos-demo";
 
   useEffect(() => {
@@ -1410,6 +1475,10 @@ const [newPassword, setNewPassword] = useState("");
   useEffect(() => {
     window.localStorage.setItem(chronoStorageKey, JSON.stringify(personalChronos));
   }, [chronoStorageKey, personalChronos]);
+
+  useEffect(() => {
+    fetchClubMessages();
+  }, [user?.id]);
 
   const chronoEvolutionGroups = useMemo(() => {
     type ChronoEvolutionItem = {
@@ -3301,6 +3370,7 @@ if (isPasswordRecovery) {
 
         <nav className="side-nav">
           <button className={activeTab === "calendar" ? "active" : ""} onClick={() => { setActiveTab("calendar"); setShowMenu(false); }}>📅 Calendrier</button>
+          <button className={activeTab === "news" ? "active" : ""} onClick={() => { setActiveTab("news"); setShowMenu(false); fetchClubMessages(); }}>📰 Actualités ASM{clubMessages.length > 0 ? ` (${clubMessages.length})` : ""}</button>
           <button className={activeTab === "mySessions" ? "active" : ""} onClick={() => { setActiveTab("mySessions"); setShowMenu(false); }}>🎯 Mes zones cibles</button>
           <button className={activeTab === "chronos" ? "active" : ""} onClick={() => { setActiveTab("chronos"); setShowMenu(false); }}>🏆 Mes chronos</button>
           <button className={activeTab === "profile" ? "active" : ""} onClick={() => { setActiveTab("profile"); setShowMenu(false); }}>⚙️ Profil</button>
@@ -3350,6 +3420,8 @@ if (isPasswordRecovery) {
             <p>
               {activeTab === "calendar"
                 ? "ASM Pau"
+                : activeTab === "news"
+                ? "Actualités ASM"
                 : activeTab === "mySessions"
                 ? "Mes zones cibles"
                 : activeTab === "chronos"
@@ -3414,6 +3486,117 @@ if (isPasswordRecovery) {
               </section>
             )}
           </>
+        )}
+
+
+        {activeTab === "news" && (
+          <section className="panel-screen">
+            <h2>Actualités ASM</h2>
+
+            <div className="profile-card" style={{ marginBottom: 14 }}>
+              <strong>Messages du club</strong>
+              <p>
+                Retrouvez ici les informations importantes du club : lettre du mois, sondages, rappels et messages du bureau.
+              </p>
+            </div>
+
+            {isAdmin && (
+              <div className="profile-card" style={{ marginBottom: 14 }}>
+                <h3 style={{ marginTop: 0 }}>Publier une actualité</h3>
+
+                <label>
+                  Titre
+                  <input
+                    value={newClubMessageTitle}
+                    onChange={(event) => setNewClubMessageTitle(event.target.value)}
+                    placeholder="Ex : Lettre du mois de juin"
+                  />
+                </label>
+
+                <label>
+                  Message
+                  <textarea
+                    value={newClubMessageContent}
+                    onChange={(event) => setNewClubMessageContent(event.target.value)}
+                    placeholder="Écris ici le message visible par les adhérents..."
+                    rows={5}
+                  />
+                </label>
+
+                <label>
+                  Lien optionnel
+                  <input
+                    value={newClubMessageLinkUrl}
+                    onChange={(event) => setNewClubMessageLinkUrl(event.target.value)}
+                    placeholder="https://..."
+                  />
+                </label>
+
+                <label>
+                  Texte du bouton lien
+                  <input
+                    value={newClubMessageLinkLabel}
+                    onChange={(event) => setNewClubMessageLinkLabel(event.target.value)}
+                    placeholder="Ex : Répondre au sondage"
+                  />
+                </label>
+
+                <label className="checkbox-line">
+                  <input
+                    type="checkbox"
+                    checked={newClubMessageImportant}
+                    onChange={(event) => setNewClubMessageImportant(event.target.checked)}
+                  />
+                  Message important
+                </label>
+
+                <button className="primary-btn" onClick={publishClubMessage} disabled={publishingClubMessage}>
+                  {publishingClubMessage ? "Publication..." : "Publier dans l’application"}
+                </button>
+              </div>
+            )}
+
+            {clubMessageFeedback && <div className="hint-card" style={{ marginBottom: 14 }}>{clubMessageFeedback}</div>}
+
+            {clubMessagesLoading ? (
+              <p className="empty-message">Chargement des actualités...</p>
+            ) : clubMessages.length === 0 ? (
+              <p className="empty-message">Aucune actualité publiée pour le moment.</p>
+            ) : (
+              <div className="admin-list">
+                {clubMessages.map((message) => {
+                  const createdAt = message.created_at ? new Date(message.created_at) : null;
+                  const isNew = createdAt ? Date.now() - createdAt.getTime() < 7 * 24 * 60 * 60 * 1000 : false;
+
+                  return (
+                    <div key={message.id} className="admin-card" style={{ alignItems: "stretch", flexDirection: "column" }}>
+                      <div>
+                        <strong>{message.important ? "⭐ " : ""}{message.title}</strong>
+                        <p style={{ marginTop: 4, opacity: 0.72 }}>
+                          {createdAt ? createdAt.toLocaleDateString("fr-FR") : "Actualité ASM"}
+                          {isNew ? " • Nouveau" : ""}
+                        </p>
+                      </div>
+
+                      <p style={{ whiteSpace: "pre-line", marginTop: 10 }}>{message.content}</p>
+
+                      {message.link_url && (
+                        <a
+                          className="primary-btn"
+                          href={message.link_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ textAlign: "center", textDecoration: "none", marginTop: 10 }}
+                        >
+                          {message.link_label || "Ouvrir le lien"}
+                        </a>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
         )}
 
         {activeTab === "mySessions" && (
