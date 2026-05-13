@@ -4273,8 +4273,8 @@ if (isPasswordRecovery) {
                 <div>
                   <strong>Notifications de l’application</strong>
                   <p>
-                    Active les alertes de ce téléphone. L’application prévient quand une nouvelle séance est ajoutée
-                    pendant qu’elle est ouverte.
+                    Active les alertes de ce téléphone. L’application pourra vous prévenir quand un partenaire compatible
+                    rejoint une séance où vous êtes inscrit.
                   </p>
                   <p style={{ marginTop: 6, fontSize: 13, opacity: 0.75 }}>
                     État navigateur : {!browserNotificationsAvailable()
@@ -4291,8 +4291,13 @@ if (isPasswordRecovery) {
                 </button>
               </div>
 
-              <button className="secondary-btn" style={{ marginTop: 14 }} onClick={sendTestNotification}>
-                Envoyer une notification test
+              <button
+                type="button"
+                className="link-btn"
+                style={{ marginTop: 10, padding: 0, fontSize: 13, opacity: 0.85 }}
+                onClick={sendTestNotification}
+              >
+                Tester les notifications
               </button>
 
               {notificationFeedback && (
@@ -4302,9 +4307,8 @@ if (isPasswordRecovery) {
               )}
 
               <p style={{ marginTop: 14, fontSize: 13, opacity: 0.75 }}>
-                Version simple : pas besoin de nouvelle table Supabase. Les alertes locales fonctionnent avec l’application
-                ouverte ou installée en PWA. Pour prévenir tous les adhérents même application fermée, il faudra ensuite ajouter
-                un vrai service push côté serveur.
+                Les notifications sont pensées pour rester utiles : pas d’alerte à chaque séance, mais un rappel quand
+                l’information peut vraiment aider à courir ensemble.
               </p>
             </div>
           </section>
