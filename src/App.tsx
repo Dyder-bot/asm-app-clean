@@ -4068,56 +4068,7 @@ if (isPasswordRecovery) {
                 </button>
               </div>
 
-              <div className="personal-goal-card">
-                <h3>Confidentialité</h3>
-                <p>
-                  Données utilisées uniquement pour le fonctionnement interne du club.
-                  {privacyAcceptedAt ? ` Accepté le ${new Date(privacyAcceptedAt).toLocaleDateString("fr-FR")}.` : ""}
-                </p>
-                <label
-                  style={{ display: "flex", alignItems: "flex-start", gap: 10, fontSize: 13 }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={privacyAccepted}
-                    onChange={(e) => {
-                      setPrivacyAccepted(e.target.checked);
-                      setPrivacyAcceptedAt(e.target.checked ? new Date().toISOString() : null);
-                    }}
-                    style={{ width: 18, height: 18, marginTop: 2 }}
-                  />
-                  <span>J’ai lu et j’accepte la politique de confidentialité de l’application ASM Course à Pied.</span>
-                </label>
-                <button
-                  type="button"
-                  className="secondary-btn"
-                  onClick={() => setShowPrivacyPolicy((value) => !value)}
-                  style={{ marginTop: 12 }}
-                >
-                  {showPrivacyPolicy ? "Masquer la politique" : "Lire la politique de confidentialité"}
-                </button>
-                {showPrivacyPolicy && <PrivacyPolicyBlock />}
-              </div>
-
-              <div className="personal-goal-card">
-                <h3>Suppression du compte</h3>
-                <p>
-                  Tu peux demander la suppression de ton compte et des données associées.
-                  Un administrateur du club traitera la demande.
-                </p>
-                {deletionRequestSent ? (
-                  <p className="empty-message">Demande de suppression envoyée. Elle est en attente de traitement.</p>
-                ) : (
-                  <button
-                    type="button"
-                    className="danger-btn"
-                    onClick={requestAccountDeletion}
-                    disabled={sendingDeletionRequest}
-                  >
-                    {sendingDeletionRequest ? "Envoi en cours..." : "Demander la suppression de mon compte"}
-                  </button>
-                )}
-              </div>
+              
 
               <button className="primary-btn" onClick={saveMyProfile}>Enregistrer le profil</button>
             </div>
