@@ -647,7 +647,7 @@ const PARTNER_COMPATIBILITY_MESSAGES: Record<PartnerCompatibilityType, { single:
       "🤝 Si {names} choisit la même séance que toi, vous pourrez vous motiver tout en restant dans les bonnes zones d’effort.",
     ],
     multiple: [
-      "⛰️ {names} sont sur des repères proches des tiens. S’ils choisissent la même option, vous pouvez bien travailler ensemble.",
+      "⛰️ {names} sont sur des repères proches des tiens. Si vous faites la même séance, cela peut être un bon groupe de travail.",
       "🏔️ Si {names} partent sur le même exercice que toi, vous devriez pouvoir gérer les côtes dans des zones similaires.",
       "🔥 {names} semblent compatibles avec ton effort sur ce type de séance. Si vous faites la même option, n’hésite pas à te rapprocher d’eux.",
       "🤝 Si {names} choisissent la même séance que toi, vous pourrez vous motiver tout en restant dans les bonnes zones d’effort.",
