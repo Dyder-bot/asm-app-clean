@@ -1311,8 +1311,7 @@ export default function CalendarApp() {
   const [pendingProfiles, setPendingProfiles] = useState<MemberProfile[]>([]);
   const [approvedProfiles, setApprovedProfiles] = useState<MemberProfile[]>([]);
   const [deletionRequests, setDeletionRequests] = useState<AccountDeletionRequest[]>([]);
-  const [deletionRequestSent, setDeletionRequestSent] = useState(false);
-  const [sendingDeletionRequest, setSendingDeletionRequest] = useState(false);
+
   const [approvingProfileId, setApprovingProfileId] = useState<string | null>(null);
   const [approvingAdminProfileId, setApprovingAdminProfileId] = useState<string | null>(null);
   const [deactivatingProfileId, setDeactivatingProfileId] = useState<string | null>(null);
