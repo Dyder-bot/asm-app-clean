@@ -613,7 +613,7 @@ type PartnerCompatibilityType = "vma" | "threshold" | "trail";
 const PARTNER_COMPATIBILITY_MESSAGES: Record<PartnerCompatibilityType, { single: string[]; multiple: string[] }> = {
   vma: {
     single: [
-      "⚡ {names} a des repères proches des tiens sur ce type de travail. Si cette personne part sur le même exercice que toi, cela peut être une bonne occasion de tenir les bonnes allures ensemble.",
+      "⚡ Plusieurs coureurs proches de ton niveau sont inscrits ce soir. Bonne occasion de faire la séance ensemble 👟",
       "🎯 {names} semble avoir un niveau compatible avec le tien. Propose-lui la séance si vous choisissez le même objectif, à deux c’est souvent plus facile de rester régulier.",
       "🚀 {names} est dans une zone proche de la tienne pour ce type d’effort rapide. Si vous partez sur la même séance, vous pouvez vous aider à garder des fractions propres.",
       "🤝 {names} peut être un bon repère d’allure pour toi ce soir. À voir ensemble si vous choisissez le même exercice.",
@@ -644,13 +644,13 @@ const PARTNER_COMPATIBILITY_MESSAGES: Record<PartnerCompatibilityType, { single:
       "⛰️ {names} a des repères proches des tiens pour ce type de travail. Si vous choisissez le même exercice, vous pouvez bien gérer l’effort ensemble.",
       "🏔️ {names} semble compatible avec ton niveau. Propose-lui de partager la séance si vous partez sur le même objectif.",
       "🤝 {names} peut être un bon repère pour toi sur ce type d’effort. À voir ensemble si vous faites la même séance.",
-      "🔥 {names} est dans une zone proche de la tienne. Si l’exercice choisi est le même, cela peut être une bonne occasion de travailler ensemble.",
+      "⚡ Des coureurs proches de ton niveau sont inscrits ce soir. Bonne occasion de faire la séance ensemble 👟",
     ],
     multiple: [
       "⛰️ {names} ont des repères proches des tiens pour ce type de travail. S’ils choisissent le même exercice, vous pouvez bien gérer l’effort ensemble.",
       "🏔️ {names} semblent compatibles avec ton niveau. Propose-leur de partager la séance si vous partez sur le même objectif.",
       "🤝 {names} peuvent être de bons repères pour toi sur ce type d’effort. À voir ensemble s’ils font la même séance.",
-      "🔥 {names} sont dans une zone proche de la tienne. Si l’exercice choisi est le même, cela peut être une bonne occasion de travailler ensemble.",
+      "⚡ 4 coureurs proches de ton niveau sont inscrits ce soir. Bonne occasion de faire la séance ensemble 👟",
     ],
   },
 };
