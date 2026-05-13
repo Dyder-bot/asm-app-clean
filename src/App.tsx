@@ -4079,7 +4079,13 @@ if (isPasswordRecovery) {
               </button>
               {showPrivacyPolicy && <PrivacyPolicyBlock />}
 
-<div className="personal-goal-card">
+
+
+              <div style={{ marginTop: 18, marginBottom: 26 }}>
+<button className="primary-btn" onClick={saveMyProfile}>Enregistrer le profil</button>
+              </div>
+
+<div className="personal-goal-card" style={{ marginTop: 28 }}>
                 <h3>Suppression du compte</h3>
                 <p>
                   Tu peux demander la suppression de ton compte et des données associées.
@@ -4099,7 +4105,7 @@ if (isPasswordRecovery) {
                 )}
               </div>
 
-              <button className="primary-btn" onClick={saveMyProfile}>Enregistrer le profil</button>
+              
             </div>
           </section>
         )}
