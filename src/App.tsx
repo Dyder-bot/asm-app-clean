@@ -1596,6 +1596,28 @@ const [newPassword, setNewPassword] = useState("");
     setPublishingClubMessage(false);
   }
 
+  async function deleteClubMessage(messageId: string, messageTitle: string) {
+    if (!user || !isAdmin) return;
+
+    const confirmed = window.confirm(`Supprimer cette actualité ?\n\n${messageTitle}`);
+    if (!confirmed) return;
+
+    setClubMessageFeedback("");
+
+    const { error } = await supabase
+      .from("club_messages")
+      .delete()
+      .eq("id", messageId);
+
+    if (error) {
+      setClubMessageFeedback("Erreur suppression actualité : " + error.message);
+      return;
+    }
+
+    setClubMessageFeedback("Actualité supprimée.");
+    await fetchClubMessages();
+  }
+
   const chronoStorageKey = user?.id ? `asm-personal-chronos-${user.id}` : "asm-personal-chronos-demo";
 
   useEffect(() => {
@@ -3508,7 +3530,11 @@ if (isPasswordRecovery) {
     <div className="app-screen" onClick={() => showMenu && setShowMenu(false)}>
       {showMenu && <div className="menu-backdrop" />}
 
-      <aside className={`side-menu ${showMenu ? "open" : ""}`} onClick={(e) => e.stopPropagation()}>
+      <aside
+        className={`side-menu ${showMenu ? "open" : ""}`}
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxHeight: "100dvh", overflowY: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 28 }}
+      >
         <div className="side-menu-top">
           <img className="side-logo" src="/logo-asm.png" alt="ASM Pau" />
           <div>
@@ -3730,6 +3756,17 @@ if (isPasswordRecovery) {
                           {message.link_label || "Lire le document"}
                         </a>
                       )}
+
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          className="danger-btn"
+                          onClick={() => deleteClubMessage(message.id, message.title)}
+                          style={{ marginTop: 10 }}
+                        >
+                          Supprimer cette actualité
+                        </button>
+                      )}
                     </div>
                   );
                 })}
@@ -3813,6 +3850,44 @@ if (isPasswordRecovery) {
             </div>
 
             {clubMessageFeedback && <div className="hint-card" style={{ marginBottom: 14 }}>{clubMessageFeedback}</div>}
+
+            <div className="profile-card" style={{ marginBottom: 14 }}>
+              <h3 style={{ marginTop: 0 }}>Actualités publiées</h3>
+              {clubMessagesLoading ? (
+                <p className="empty-message">Chargement...</p>
+              ) : clubMessages.length === 0 ? (
+                <p className="empty-message">Aucune actualité publiée pour le moment.</p>
+              ) : (
+                <div className="admin-list">
+                  {clubMessages.map((message) => (
+                    <div key={message.id} className="admin-card" style={{ alignItems: "stretch", flexDirection: "column" }}>
+                      <strong>{message.important ? "⭐ " : ""}{message.title}</strong>
+                      <p style={{ marginTop: 4, opacity: 0.72 }}>
+                        {message.created_at ? new Date(message.created_at).toLocaleDateString("fr-FR") : "Actualité ASM"}
+                      </p>
+                      {message.link_url && (
+                        <a
+                          href={message.link_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ marginTop: 8, color: "#DDF64D", fontWeight: 800 }}
+                        >
+                          {message.link_label || "Lire le document"}
+                        </a>
+                      )}
+                      <button
+                        type="button"
+                        className="danger-btn"
+                        onClick={() => deleteClubMessage(message.id, message.title)}
+                        style={{ marginTop: 10 }}
+                      >
+                        Supprimer
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </section>
         )}
 
@@ -5355,7 +5430,7 @@ if (isPasswordRecovery) {
                 </div>
               </div>
             )}
- 
+
             {!mapLoaded && (
               <p className="map-loading">Chargement du parcours...</p>
             )}
