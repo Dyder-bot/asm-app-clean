@@ -1733,6 +1733,9 @@ const [newPassword, setNewPassword] = useState("");
 
     navigator.serviceWorker
       .register("/asm-sw.js")
+      .then(() => {
+        // Service worker prêt pour les notifications locales Android / PWA.
+      })
       .catch(() => {
         // L'application continue de fonctionner même si le service worker n'est pas disponible.
       });
@@ -2766,12 +2769,19 @@ await supabase.auth.signOut();
 
     try {
       if ("serviceWorker" in navigator) {
-        const registration = await navigator.serviceWorker.ready;
+        const registration = await Promise.race([
+          navigator.serviceWorker.ready,
+          new Promise<ServiceWorkerRegistration>((_, reject) =>
+            window.setTimeout(() => reject(new Error("Service worker non prêt")), 2500)
+          ),
+        ]);
+
         await registration.showNotification(title, {
           body,
           icon: "/logo-asm.png",
           badge: "/logo-asm.png",
           tag: "asm-course-a-pied",
+          renotify: true,
         });
         return true;
       }
@@ -2834,7 +2844,7 @@ await supabase.auth.signOut();
 
     setNotificationFeedback(sent
       ? "Notifications activées. Une notification de confirmation vient d’être envoyée."
-      : "Notifications activées, mais ce navigateur n’a pas affiché la notification de confirmation."
+      : "Notifications activées, mais l’appareil ne l’a pas affichée. Vérifie les autorisations de notifications du navigateur et du téléphone."
     );
   }
 
@@ -2876,8 +2886,8 @@ await supabase.auth.signOut();
     );
 
     setNotificationFeedback(sent
-      ? "Notification test envoyée. Si elle ne s’affiche pas, vérifie aussi les réglages système de ton téléphone ou ordinateur."
-      : "Autorisation OK, mais ce navigateur n’a pas affiché la notification. Sur Android, vérifie les autorisations de Chrome et installe l’application en PWA si besoin."
+      ? "Notification test envoyée. Si elle ne s’affiche pas, vérifie les autorisations de notifications du navigateur et du téléphone."
+      : "Autorisation OK, mais l’appareil n’a pas affiché la notification. Vérifie les autorisations de Chrome / navigateur et installe l’application en PWA si besoin."
     );
   }
 
