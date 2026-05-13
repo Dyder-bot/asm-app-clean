@@ -1743,9 +1743,9 @@ const [newPassword, setNewPassword] = useState("");
           });
 
           showAsmNotification(
-            "Nouvelle séance ASM",
-            `${newSession.title} • ${formatDate(newSession.date)}${newSession.start_time ? ` à ${newSession.start_time}` : ""}`
-          );
+  "Nouvelle séance ASM",
+  `${newSession.title} • ${new Date(newSession.date).toLocaleDateString("fr-FR")}${newSession.start_time ? ` à ${newSession.start_time}` : ""}`
+);
         }
       )
       .on(
