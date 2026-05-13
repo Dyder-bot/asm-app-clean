@@ -613,44 +613,44 @@ type PartnerCompatibilityType = "vma" | "threshold" | "trail";
 const PARTNER_COMPATIBILITY_MESSAGES: Record<PartnerCompatibilityType, { single: string[]; multiple: string[] }> = {
   vma: {
     single: [
-      "🤝 Si {names} choisit la même option que toi, vous pouvez faire une belle séance ensemble.",
-      "⚡ {names} est sur des repères proches des tiens. Si vous partez sur la même option, n’hésite pas à te rapprocher d’elle/lui.",
-      "🎯 {names} semble compatible avec ton allure. Si vous faites le même exercice, vous pourrez vous aider à garder le bon rythme.",
-      "🏃 {names} est dans une zone proche de la tienne. Si vous choisissez la même séance, ça peut être motivant de la faire ensemble.",
+      "⚡ {names} a des repères proches des tiens sur ce travail de vitesse. Si vous faites cette même séance, vous pouvez vous aider à garder le bon rythme.",
+      "🎯 Sur ce type de fractionné, {names} semble être un bon repère pour toi. Si vous partez sur la même séance, ça peut être motivant de la faire ensemble.",
+      "🚀 {names} est dans une zone proche de la tienne pour cet effort rapide. À deux, c’est souvent plus facile de tenir les fractions propres.",
+      "🤝 Si {names} choisit cette même séance, vous pouvez vous tirer vers le haut tout en gardant les bonnes allures.",
     ],
     multiple: [
-      "🤝 Si {names} choisissent la même option que toi, vous pouvez faire une belle séance ensemble.",
-      "⚡ {names} sont sur des repères proches des tiens. Si vous partez sur la même option, n’hésite pas à te rapprocher d’eux.",
-      "🎯 {names} semblent compatibles avec ton allure. Si vous faites le même exercice, vous pourrez vous aider à garder le bon rythme.",
-      "🏃 {names} sont dans une zone proche de la tienne. Si vous choisissez la même séance, ça peut être motivant de la faire ensemble.",
+      "⚡ {names} ont des repères proches des tiens sur ce travail de vitesse. Si vous faites cette même séance, vous pouvez vous aider à garder le bon rythme.",
+      "🎯 Sur ce type de fractionné, {names} semblent être de bons repères pour toi. Si vous partez sur la même séance, ça peut être motivant de la faire ensemble.",
+      "🚀 {names} sont dans une zone proche de la tienne pour cet effort rapide. À plusieurs, c’est souvent plus facile de tenir les fractions propres.",
+      "🤝 Si {names} choisissent cette même séance, vous pouvez vous tirer vers le haut tout en gardant les bonnes allures.",
     ],
   },
   threshold: {
     single: [
-      "🎯 {names} est sur des zones d’effort proches des tiennes. Si elle/il choisit la même option, vous pouvez travailler ensemble.",
-      "🔥 Si {names} part sur la même séance que toi, vous devriez pouvoir tenir un effort similaire.",
-      "⚡ {names} semble compatible avec ton niveau sur ce type d’effort. Si vous choisissez le même bloc, rapprochez-vous.",
-      "🤝 Si {names} fait la même option que toi, cela peut vous aider à rester réguliers dans les bonnes zones.",
+      "🎯 {names} est sur des repères proches des tiens pour ce travail au seuil. Si vous faites cette même séance, vous pouvez vous aider à rester réguliers.",
+      "🔥 Sur ce bloc au seuil, {names} semble compatible avec ton niveau. Ensemble, vous pourrez mieux garder l’effort juste.",
+      "🤝 Si {names} choisit cette même séance, cela peut faire un bon binôme pour tenir la bonne intensité sans partir trop vite.",
+      "💪 {names} a des allures proches des tiennes sur ce type d’effort. C’est une bonne occasion de travailler proprement ensemble.",
     ],
     multiple: [
-      "🎯 {names} sont sur des zones d’effort proches des tiennes. S’ils choisissent la même option, vous pouvez travailler ensemble.",
-      "🔥 Si {names} partent sur la même séance que toi, vous devriez pouvoir tenir un effort similaire.",
-      "⚡ {names} semblent compatibles avec ton niveau sur ce type d’effort. Si vous choisissez le même bloc, rapprochez-vous.",
-      "🤝 Si {names} font la même option que toi, cela peut vous aider à rester réguliers dans les bonnes zones.",
+      "🎯 {names} sont sur des repères proches des tiens pour ce travail au seuil. Si vous faites cette même séance, vous pouvez vous aider à rester réguliers.",
+      "🔥 Sur ce bloc au seuil, {names} semblent compatibles avec ton niveau. Ensemble, vous pourrez mieux garder l’effort juste.",
+      "🤝 Si {names} choisissent cette même séance, cela peut faire un bon petit groupe pour tenir la bonne intensité sans partir trop vite.",
+      "💪 {names} ont des allures proches des tiennes sur ce type d’effort. C’est une bonne occasion de travailler proprement ensemble.",
     ],
   },
   trail: {
     single: [
-      "⛰️ {names} est sur des repères proches des tiens. Si elle/il choisit la même option, vous pouvez bien travailler ensemble.",
-      "🏔️ Si {names} part sur le même exercice que toi, vous devriez pouvoir gérer les côtes dans des zones similaires.",
-      "🔥 {names} semble compatible avec ton effort sur ce type de séance. Si vous faites la même option, n’hésite pas à te rapprocher d’elle/lui.",
-      "🤝 Si {names} choisit la même séance que toi, vous pourrez vous motiver tout en restant dans les bonnes zones d’effort.",
+      "⛰️ {names} est sur des repères proches des tiens pour cette séance trail. Si vous faites ce même travail, vous pouvez bien gérer l’effort ensemble.",
+      "🏔️ Sur ce type de séance, {names} semble compatible avec ton effort. Ensemble, vous pourrez rester dans les bonnes zones sans vous mettre dans le rouge.",
+      "🤝 Si {names} choisit cette même séance, vous pouvez vous motiver dans les montées et garder une bonne gestion de l’effort.",
+      "🔥 {names} a des repères proches des tiens pour ce travail spécifique. C’est une bonne occasion de partager la séance.",
     ],
     multiple: [
-      "⛰️ {names} sont sur des repères proches des tiens. Si vous faites la même séance, cela peut être un bon groupe de travail.",
-      "🏔️ Si {names} partent sur le même exercice que toi, vous devriez pouvoir gérer les côtes dans des zones similaires.",
-      "🔥 {names} semblent compatibles avec ton effort sur ce type de séance. Si vous faites la même option, n’hésite pas à te rapprocher d’eux.",
-      "🤝 Si {names} choisissent la même séance que toi, vous pourrez vous motiver tout en restant dans les bonnes zones d’effort.",
+      "⛰️ {names} sont sur des repères proches des tiens pour cette séance trail. Si vous faites ce même travail, vous pouvez bien gérer l’effort ensemble.",
+      "🏔️ Sur ce type de séance, {names} semblent compatibles avec ton effort. Ensemble, vous pourrez rester dans les bonnes zones sans vous mettre dans le rouge.",
+      "🤝 Si {names} choisissent cette même séance, vous pouvez vous motiver dans les montées et garder une bonne gestion de l’effort.",
+      "🔥 {names} ont des repères proches des tiens pour ce travail spécifique. C’est une bonne occasion de partager la séance.",
     ],
   },
 };
@@ -658,30 +658,51 @@ const PARTNER_COMPATIBILITY_MESSAGES: Record<PartnerCompatibilityType, { single:
 function getPartnerCompatibilityType(session: Pick<Session, "title" | "description" | "type"> | null, goalLabel = ""): PartnerCompatibilityType | null {
   if (!session || isRaceSession(session)) return null;
 
-  const value = `${session.title || ""} ${session.description || ""} ${session.type || ""} ${goalLabel || ""}`.toLowerCase();
+  // Priorité absolue à l'objectif actuellement ouvert par l'adhérent.
+  // Exemple : si la séance contient "seuil en côtes" + "10 x 400 m",
+  // et que l'objectif ouvert est "10 x 400 m", on parle bien de VMA/400 m.
+  const selectedGoalText = `${goalLabel || ""}`.toLowerCase();
+  const fullSessionText = `${session.title || ""} ${session.description || ""} ${session.type || ""}`.toLowerCase();
+
+  const analyze = selectedGoalText.trim().length > 0 ? selectedGoalText : fullSessionText;
 
   if (
-    value.includes("footing") ||
-    value.includes("endurance fondamentale") ||
-    value.includes("récup") ||
-    value.includes("recup") ||
-    value.includes("récupération") ||
-    value.includes("recuperation")
+    analyze.includes("footing") ||
+    analyze.includes("endurance fondamentale") ||
+    analyze.includes("récup") ||
+    analyze.includes("recup") ||
+    analyze.includes("récupération") ||
+    analyze.includes("recuperation")
   ) {
     return null;
   }
 
-  if (value.includes("côte") || value.includes("cotes") || value.includes("côtes") || value.includes("trail")) {
-    return "trail";
+  if (
+    analyze.includes("400") ||
+    analyze.includes("500") ||
+    analyze.includes("600") ||
+    analyze.includes("800") ||
+    analyze.includes("1000") ||
+    analyze.includes("vma") ||
+    analyze.includes("fractionné") ||
+    analyze.includes("fractionne") ||
+    /\d+\s*[x×]\s*\d+\s*(m|metres|mètres)?/.test(analyze)
+  ) {
+    return "vma";
   }
 
-  if (value.includes("seuil") || value.includes("tempo") || value.includes("spécifique") || value.includes("specifique")) {
+  if (analyze.includes("seuil") || analyze.includes("tempo") || analyze.includes("spécifique") || analyze.includes("specifique")) {
     return "threshold";
   }
 
-  if (value.includes("vma") || value.includes("fractionné") || value.includes("fractionne") || /\d+\s*[x×]\s*\d+/.test(value)) {
-    return "vma";
+  if (analyze.includes("côte") || analyze.includes("cotes") || analyze.includes("côtes") || analyze.includes("trail")) {
+    return "trail";
   }
+
+  // Fallback uniquement si l'objectif ne suffit pas.
+  if (fullSessionText.includes("vma") || fullSessionText.includes("fractionné") || fullSessionText.includes("fractionne")) return "vma";
+  if (fullSessionText.includes("seuil") || fullSessionText.includes("tempo")) return "threshold";
+  if (fullSessionText.includes("côte") || fullSessionText.includes("cotes") || fullSessionText.includes("côtes") || fullSessionText.includes("trail")) return "trail";
 
   return null;
 }
