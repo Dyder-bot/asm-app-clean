@@ -2184,38 +2184,12 @@ async function toggleAdminProfile(profileId: string, makeAdmin: boolean) {
 
   async function fetchParticipants(sessionId: string) {
     /*
-      Lecture sécurisée pour tous les adhérents :
-      - l'app essaie d'abord d'utiliser la fonction Supabase RPC
-        get_session_participants_for_matching(session_id)
-      - cette fonction ne renvoie que les infos utiles à la séance :
-        prénom, nom, pseudo, VMA, statut
-      - cela évite de donner un accès admin complet aux profils.
-    */
-    const { data: rpcRows, error: rpcError } = await supabase.rpc(
-      "get_session_participants_for_matching",
-      { target_session_id: sessionId }
-    );
-
-    if (!rpcError && rpcRows) {
-      const enriched = (rpcRows || []).map((row: any) => ({
-        id: row.id,
-        session_id: row.session_id,
-        user_id: row.user_id,
-        status: row.status,
-        firstname: row.pseudo || row.firstname || "Adhérent",
-        lastname: row.pseudo ? "" : row.lastname || "",
-        vma: row.vma ?? null,
-      }));
-
-      setParticipants(enriched as Participant[]);
-      return;
-    }
-
-    /*
-      Fallback ancien comportement :
-      utile tant que la fonction SQL n'est pas encore créée.
-      Pour un adhérent non-admin, ce fallback peut ne pas récupérer les VMA
-      si les politiques RLS de profiles sont restrictives.
+      Important :
+      - le compteur des intéressés/participants doit rester visible même si l'utilisateur
+        n'est pas inscrit à la séance ;
+      - la RPC sert surtout à enrichir les participants avec les infos utiles au matching
+        partenaire d'allure, mais elle peut ne rien renvoyer si l'utilisateur n'est pas participant.
+      On commence donc toujours par lire la table participants pour conserver les compteurs.
     */
     const { data: rows, error } = await supabase
       .from("participants")
@@ -2227,19 +2201,51 @@ async function toggleAdminProfile(profileId: string, makeAdmin: boolean) {
       return;
     }
 
-    const userIds = [...new Set((rows || []).map((row) => row.user_id))];
+    const baseRows = rows || [];
 
-    if (userIds.length === 0) {
+    if (baseRows.length === 0) {
       setParticipants([]);
       return;
     }
+
+    /*
+      Lecture sécurisée pour tous les adhérents inscrits :
+      la fonction Supabase RPC peut renvoyer prénom, initiale et VMA pour le matching,
+      sans donner d'accès admin complet aux profils.
+    */
+    const { data: rpcRows, error: rpcError } = await supabase.rpc(
+      "get_session_participants_for_matching",
+      { target_session_id: sessionId }
+    );
+
+    if (!rpcError && Array.isArray(rpcRows) && rpcRows.length > 0) {
+      const enriched = baseRows.map((row) => {
+        const rpcProfile = (rpcRows || []).find((profileRow: any) => profileRow.user_id === row.user_id);
+
+        return {
+          ...row,
+          firstname: rpcProfile?.pseudo || rpcProfile?.firstname || "Adhérent",
+          lastname: rpcProfile?.pseudo ? "" : rpcProfile?.lastname || "",
+          vma: rpcProfile?.vma ?? null,
+        };
+      });
+
+      setParticipants(enriched as Participant[]);
+      return;
+    }
+
+    /*
+      Fallback ancien comportement :
+      garde les compteurs actifs et essaie d'afficher les noms si les RLS le permettent.
+    */
+    const userIds = [...new Set(baseRows.map((row) => row.user_id))];
 
     const { data: profiles } = await supabase
       .from("profiles")
       .select("id, firstname, lastname, pseudo, vma")
       .in("id", userIds);
 
-    const enriched = (rows || []).map((row) => {
+    const enriched = baseRows.map((row) => {
       const profile = (profiles || []).find((p) => p.id === row.user_id);
       return {
         ...row,
