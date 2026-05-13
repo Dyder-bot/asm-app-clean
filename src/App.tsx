@@ -1755,11 +1755,6 @@ const [newPassword, setNewPassword] = useState("");
             if (current.some((session) => session.id === newSession.id)) return current;
             return [...current, newSession].sort((a, b) => a.date.localeCompare(b.date));
           });
-
-          void showAsmNotification(
-            "Nouvelle séance ASM",
-            `${newSession.title} • ${new Date(newSession.date).toLocaleDateString("fr-FR")}${newSession.start_time ? ` à ${newSession.start_time}` : ""}`
-          );
         }
       )
       .on(
@@ -1781,12 +1776,19 @@ const [newPassword, setNewPassword] = useState("");
           if (selectedSession?.id === deletedSession.id) setSelectedSession(null);
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "participants" },
+        (payload) => {
+          void notifyIfCompatiblePartnerJoined(payload.new as Participant);
+        }
+      )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, notificationsEnabled, notificationPermission, selectedSession?.id]);
+  }, [user, notificationsEnabled, notificationPermission, selectedSession?.id, profileVma]);
 
   useEffect(() => {
     if (!selectedSession) {
@@ -2758,6 +2760,91 @@ await supabase.auth.signOut();
     setShowAdminActions(false);
   }
 
+  function getPartnerNotificationBody(session: Session, partnerName: string, compatibilityType: PartnerCompatibilityType) {
+    const sessionDate = new Date(session.date).toLocaleDateString("fr-FR");
+    const timeLabel = session.start_time ? ` à ${session.start_time}` : "";
+
+    if (compatibilityType === "vma") {
+      return `${partnerName} vient de rejoindre ${session.title} du ${sessionDate}${timeLabel}. Vos VMA sont proches : cela peut faire une bonne séance ensemble.`;
+    }
+
+    if (compatibilityType === "trail") {
+      return `${partnerName} vient de rejoindre ${session.title} du ${sessionDate}${timeLabel}. Vous avez des repères proches pour travailler ensemble.`;
+    }
+
+    return `${partnerName} vient de rejoindre ${session.title} du ${sessionDate}${timeLabel}. Vous avez des allures compatibles pour faire la séance ensemble.`;
+  }
+
+  async function notifyIfCompatiblePartnerJoined(newParticipant: Participant) {
+    if (!user || !newParticipant?.session_id || !newParticipant?.user_id) return;
+    if (newParticipant.user_id === user.id) return;
+    if (newParticipant.status !== "present") return;
+    if (!notificationsEnabled || !browserNotificationsAvailable() || Notification.permission !== "granted") return;
+
+    const myVma = Number(profileVma || 0);
+    if (!Number.isFinite(myVma) || myVma <= 0) return;
+
+    const dedupeKey = `asm-compatible-partner-${user.id}-${newParticipant.id || `${newParticipant.session_id}-${newParticipant.user_id}`}`;
+    if (window.localStorage.getItem(dedupeKey)) return;
+
+    const { data: sessionData } = await supabase
+      .from("sessions")
+      .select("*")
+      .eq("id", newParticipant.session_id)
+      .maybeSingle();
+
+    const targetSession = sessionData as Session | null;
+
+    if (!targetSession || isRaceSession(targetSession)) return;
+
+    const compatibilityType = getPartnerCompatibilityType(targetSession, "");
+    if (!compatibilityType) return;
+
+    const tolerance = compatibilityType === "trail" ? 1.2 : compatibilityType === "threshold" ? 0.9 : 0.7;
+
+    const { data: myRows, error: myParticipationError } = await supabase
+      .from("participants")
+      .select("id, status")
+      .eq("session_id", newParticipant.session_id)
+      .eq("user_id", user.id)
+      .limit(1);
+
+    if (myParticipationError || !myRows?.[0] || myRows[0].status !== "present") return;
+
+    const { data: rpcRows, error: rpcError } = await supabase.rpc(
+      "get_session_participants_for_matching",
+      { target_session_id: newParticipant.session_id }
+    );
+
+    if (rpcError || !Array.isArray(rpcRows)) return;
+
+    const partnerRow = rpcRows.find((row: any) => row.user_id === newParticipant.user_id);
+    const partnerVma = Number(partnerRow?.vma || 0);
+
+    if (!Number.isFinite(partnerVma) || partnerVma <= 0) return;
+    if (Math.abs(partnerVma - myVma) > tolerance) return;
+
+    const partner: Participant = {
+      id: partnerRow.id || newParticipant.id,
+      session_id: partnerRow.session_id || newParticipant.session_id,
+      user_id: partnerRow.user_id || newParticipant.user_id,
+      status: partnerRow.status || newParticipant.status,
+      firstname: partnerRow.pseudo || partnerRow.firstname || "Un adhérent",
+      lastname: partnerRow.pseudo ? "" : partnerRow.lastname || "",
+      vma: partnerRow.vma ?? null,
+    };
+
+    const partnerName = formatPartnerDisplayName(partner) || "Un adhérent";
+    const sent = await showAsmNotification(
+      "Partenaire d’allure ASM",
+      getPartnerNotificationBody(targetSession, partnerName, compatibilityType)
+    );
+
+    if (sent) {
+      window.localStorage.setItem(dedupeKey, "true");
+    }
+  }
+
   function browserNotificationsAvailable() {
     return typeof window !== "undefined" && "Notification" in window;
   }
@@ -2781,7 +2868,8 @@ await supabase.auth.signOut();
           icon: "/logo-asm.png",
           badge: "/logo-asm.png",
           tag: "asm-course-a-pied",
-        });
+          renotify: true,
+        } as NotificationOptions & { renotify?: boolean });
         return true;
       }
 
@@ -2837,7 +2925,7 @@ await supabase.auth.signOut();
 
     const sent = await showAsmNotification(
       "Notifications ASM activées",
-      "Tu recevras une alerte quand une nouvelle séance sera ajoutée pendant que l’application est ouverte.",
+      "Tu recevras une alerte quand un partenaire de niveau proche rejoint une séance où tu es inscrit.",
       true
     );
 
