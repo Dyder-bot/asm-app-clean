@@ -3551,10 +3551,32 @@ if (isPasswordRecovery) {
           <button className={activeTab === "notifications" ? "active" : ""} onClick={() => openTab("notifications")}>🔔 Notifications</button>
 
           {isAdmin && (
-            <>
+            <div
+              style={{
+                marginTop: 10,
+                paddingTop: 14,
+                borderTop: "1px solid rgba(255,255,255,0.10)",
+                display: "grid",
+                gap: 8,
+              }}
+            >
+              <div
+                style={{
+                  padding: "0 26px",
+                  color: "rgba(255,255,255,0.55)",
+                  fontSize: 13,
+                  fontWeight: 800,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.6,
+                }}
+              >
+                Administration
+              </div>
+
               <button
                 className={activeTab === "admin" ? "active" : ""}
                 onClick={() => openTab("admin") }
+                style={{ paddingTop: 12, paddingBottom: 12 }}
               >
                 ✅ Demandes d’accès{pendingProfiles.length + deletionRequests.length > 0 ? ` (${pendingProfiles.length + deletionRequests.length})` : ""}
               </button>
@@ -3562,6 +3584,7 @@ if (isPasswordRecovery) {
               <button
                 className={activeTab === "publishNews" ? "active" : ""}
                 onClick={() => openTab("publishNews") }
+                style={{ paddingTop: 12, paddingBottom: 12 }}
               >
                 📰 Ajouter une actualité
               </button>
@@ -3569,10 +3592,11 @@ if (isPasswordRecovery) {
               <button
                 className={activeTab === "importPlan" ? "active" : ""}
                 onClick={() => openTab("importPlan") }
+                style={{ paddingTop: 12, paddingBottom: 12 }}
               >
                 📥 Importer un plan
               </button>
-            </>
+            </div>
           )}
 
           <button onClick={handleLogout}>↪ Déconnexion</button>
