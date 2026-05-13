@@ -1363,6 +1363,7 @@ export default function CalendarApp() {
     if (typeof window === "undefined" || !("Notification" in window)) return "denied";
     return Notification.permission;
   });
+  const [notificationFeedback, setNotificationFeedback] = useState("");
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(
   window.location.pathname === "/reset-password"
 );
@@ -1743,9 +1744,9 @@ const [newPassword, setNewPassword] = useState("");
           });
 
           showAsmNotification(
-  "Nouvelle séance ASM",
-  `${newSession.title} • ${new Date(newSession.date).toLocaleDateString("fr-FR")}${newSession.start_time ? ` à ${newSession.start_time}` : ""}`
-);
+            "Nouvelle séance ASM",
+            `${newSession.title} • ${new Date(newSession.date).toLocaleDateString("fr-FR")}${newSession.start_time ? ` à ${newSession.start_time}` : ""}`
+          );
         }
       )
       .on(
@@ -2748,9 +2749,10 @@ await supabase.auth.signOut();
     return typeof window !== "undefined" && "Notification" in window;
   }
 
-  function showAsmNotification(title: string, body: string) {
-    if (!notificationsEnabled || !browserNotificationsAvailable()) return;
-    if (Notification.permission !== "granted") return;
+  function showAsmNotification(title: string, body: string, force = false) {
+    if (!browserNotificationsAvailable()) return false;
+    if (!force && !notificationsEnabled) return false;
+    if (Notification.permission !== "granted") return false;
 
     try {
       new Notification(title, {
@@ -2758,20 +2760,27 @@ await supabase.auth.signOut();
         icon: "/logo-asm.png",
         badge: "/logo-asm.png",
       });
+      return true;
     } catch {
       // Certains navigateurs mobiles limitent les notifications hors service worker.
+      return false;
     }
   }
 
   async function toggleNotifications() {
+    setNotificationFeedback("");
+
     if (!browserNotificationsAvailable()) {
-      alert("Ton navigateur ne permet pas les notifications web.");
+      const message = "Ton navigateur ne permet pas les notifications web.";
+      setNotificationFeedback(message);
+      alert(message);
       return;
     }
 
     if (notificationsEnabled) {
       setNotificationsEnabled(false);
       window.localStorage.setItem("asm-notifications", "false");
+      setNotificationFeedback("Notifications désactivées sur cet appareil.");
       return;
     }
 
@@ -2781,23 +2790,69 @@ await supabase.auth.signOut();
     if (permission !== "granted") {
       setNotificationsEnabled(false);
       window.localStorage.setItem("asm-notifications", "false");
-      alert("Les notifications sont bloquées. Tu peux les autoriser dans les réglages du navigateur.");
+      const message = permission === "denied"
+        ? "Les notifications sont bloquées. Tu peux les autoriser dans les réglages du navigateur."
+        : "Autorisation non donnée. Les notifications ne sont pas activées.";
+      setNotificationFeedback(message);
+      alert(message);
       return;
     }
 
     setNotificationsEnabled(true);
     window.localStorage.setItem("asm-notifications", "true");
 
-    showAsmNotification(
+    const sent = showAsmNotification(
       "Notifications ASM activées",
-      "Tu recevras une alerte quand une nouvelle séance sera ajoutée pendant que l’application est ouverte."
+      "Tu recevras une alerte quand une nouvelle séance sera ajoutée pendant que l’application est ouverte.",
+      true
+    );
+
+    setNotificationFeedback(sent
+      ? "Notifications activées. Une notification de confirmation vient d’être envoyée."
+      : "Notifications activées, mais ce navigateur n’a pas affiché la notification de confirmation."
     );
   }
 
-  function sendTestNotification() {
-    showAsmNotification(
+  async function sendTestNotification() {
+    setNotificationFeedback("");
+
+    if (!browserNotificationsAvailable()) {
+      const message = "Notifications non compatibles avec ce navigateur.";
+      setNotificationFeedback(message);
+      alert(message);
+      return;
+    }
+
+    let permission = Notification.permission;
+
+    if (permission === "default") {
+      permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+    }
+
+    if (permission !== "granted") {
+      setNotificationsEnabled(false);
+      window.localStorage.setItem("asm-notifications", "false");
+      const message = permission === "denied"
+        ? "Notification test impossible : les notifications sont bloquées dans le navigateur."
+        : "Notification test impossible : l’autorisation n’a pas été donnée.";
+      setNotificationFeedback(message);
+      alert(message);
+      return;
+    }
+
+    setNotificationsEnabled(true);
+    window.localStorage.setItem("asm-notifications", "true");
+
+    const sent = showAsmNotification(
       "Test notification ASM",
-      "Si tu vois ce message, les notifications fonctionnent sur cet appareil."
+      "Si tu vois ce message, les notifications fonctionnent sur cet appareil.",
+      true
+    );
+
+    setNotificationFeedback(sent
+      ? "Notification test envoyée. Si elle ne s’affiche pas, vérifie aussi les réglages système de ton téléphone ou ordinateur."
+      : "Autorisation OK, mais ce navigateur n’a pas affiché la notification. Sur iPhone, installe l’application sur l’écran d’accueil."
     );
   }
 
@@ -4114,15 +4169,20 @@ if (isPasswordRecovery) {
                 </button>
               </div>
 
-              {notificationsEnabled && notificationPermission === "granted" && (
-                <button className="secondary-btn" style={{ marginTop: 14 }} onClick={sendTestNotification}>
-                  Envoyer une notification test
-                </button>
+              <button className="secondary-btn" style={{ marginTop: 14 }} onClick={sendTestNotification}>
+                Envoyer une notification test
+              </button>
+
+              {notificationFeedback && (
+                <div className="hint-card" style={{ marginTop: 12 }}>
+                  {notificationFeedback}
+                </div>
               )}
 
               <p style={{ marginTop: 14, fontSize: 13, opacity: 0.75 }}>
-                Version simple : pas besoin de nouvelle table Supabase. Pour recevoir des alertes même application fermée,
-                il faudra ensuite ajouter un vrai service worker push.
+                Version simple : pas besoin de nouvelle table Supabase. Les alertes fonctionnent surtout quand l’application
+                est ouverte ou installée en PWA. Pour recevoir des alertes même application fermée, il faudra ensuite ajouter
+                un vrai service worker push.
               </p>
             </div>
           </section>
