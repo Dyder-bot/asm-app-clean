@@ -72,6 +72,7 @@ type Participant = {
   firstname?: string;
   lastname?: string;
   vma?: number | null;
+  goal_label?: string | null;
 };
 
 type MemberProfile = {
@@ -654,6 +655,17 @@ const PARTNER_COMPATIBILITY_MESSAGES: Record<PartnerCompatibilityType, { single:
     ],
   },
 };
+
+
+function normalizeGoalLabelForMatch(value: string | null | undefined) {
+  return (value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[×]/g, "x")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 function getPartnerCompatibilityType(session: Pick<Session, "title" | "description" | "type"> | null, goalLabel = ""): PartnerCompatibilityType | null {
   if (!session || isRaceSession(session)) return null;
@@ -1612,10 +1624,16 @@ const [newPassword, setNewPassword] = useState("");
     const myVma = Number(profileVma || 0);
     if (!Number.isFinite(myVma) || myVma <= 0) return null;
 
+    const currentGoalLabel = normalizeGoalLabelForMatch(goalLabel);
+    if (!currentGoalLabel) return null;
+
     const tolerance = compatibilityType === "trail" ? 1.2 : compatibilityType === "threshold" ? 0.9 : 0.7;
 
     const suggestions = presentParticipants
       .filter((participant) => participant.user_id !== user?.id)
+      // On ne propose que les personnes qui ont choisi exactement la même séance/objectif.
+      // Si elles n'ont pas encore choisi de séance, elles ne sont pas utilisées pour le matching.
+      .filter((participant) => normalizeGoalLabelForMatch(participant.goal_label) === currentGoalLabel)
       .filter((participant) => {
         const participantVma = Number(participant.vma || 0);
         return Number.isFinite(participantVma) && participantVma > 0 && Math.abs(participantVma - myVma) <= tolerance;
@@ -1658,6 +1676,33 @@ const [newPassword, setNewPassword] = useState("");
     );
   };
 
+
+
+
+  useEffect(() => {
+    if (!selectedSession || myParticipation !== "present") return;
+
+    if (selectedRaceProjections.length === 1) {
+      const raceGoal = selectedRaceProjections[0];
+      const label = raceGoal.kind === "trail" ? raceGoal.distance : raceGoalShortLabel(raceGoal.distance);
+      saveSelectedGoalLabel(label);
+      return;
+    }
+
+    if (personalGoals.length === 1) {
+      const goal = personalGoals[0];
+      const label = (() => {
+        if (goal.type === "vma") {
+          if (goal.isTimeBased) {
+            return `${goal.repetitions || ""} × ${formatDuration(goal.timeSeconds)}`.trim();
+          }
+          return `${goal.repetitions ? `${goal.repetitions} × ` : ""}${goal.distance} m`;
+        }
+        return goal.title || goal.label || "Séance";
+      })();
+      saveSelectedGoalLabel(label);
+    }
+  }, [selectedSession?.id, myParticipation, selectedRaceProjections.length, personalGoals.length]);
 
 
   const sessionsByDate = useMemo(() => {
@@ -2203,6 +2248,7 @@ async function toggleAdminProfile(profileId: string, makeAdmin: boolean) {
         session_id: row.session_id,
         user_id: row.user_id,
         status: row.status,
+        goal_label: row.goal_label ?? null,
         firstname: row.pseudo || row.firstname || "Adhérent",
         lastname: row.pseudo ? "" : row.lastname || "",
         vma: row.vma ?? null,
@@ -2219,7 +2265,7 @@ async function toggleAdminProfile(profileId: string, makeAdmin: boolean) {
     */
     const { data: rows, error } = await supabase
       .from("participants")
-      .select("id, session_id, user_id, status")
+      .select("id, session_id, user_id, status, goal_label")
       .eq("session_id", sessionId);
 
     if (error) {
@@ -2245,6 +2291,7 @@ async function toggleAdminProfile(profileId: string, makeAdmin: boolean) {
       const profile = (profiles || []).find((p) => p.id === row.user_id);
       return {
         ...row,
+        goal_label: (row as any).goal_label ?? null,
         firstname: profile?.pseudo || profile?.firstname || "Adhérent",
         lastname: profile?.pseudo ? "" : profile?.lastname || "",
         vma: profile?.vma ?? null,
@@ -2651,7 +2698,65 @@ await supabase.auth.signOut();
     setShowAdminActions(false);
   }
 
-  async function handleParticipation(status: ParticipationStatus) {
+
+  function getCurrentOpenedGoalLabel() {
+    if (selectedGoalIndex === null) return null;
+
+    if (selectedRaceProjections[selectedGoalIndex]) {
+      const raceGoal = selectedRaceProjections[selectedGoalIndex];
+      return raceGoal.kind === "trail" ? raceGoal.distance : raceGoalShortLabel(raceGoal.distance);
+    }
+
+    if (personalGoals[selectedGoalIndex]) {
+      const goal = personalGoals[selectedGoalIndex];
+
+      if (goal.type === "vma") {
+        if (goal.isTimeBased) {
+          return `${goal.repetitions || ""} × ${formatDuration(goal.timeSeconds)}`.trim();
+        }
+
+        return `${goal.repetitions ? `${goal.repetitions} × ` : ""}${goal.distance} m`;
+      }
+
+      return goal.title || goal.label || `Séance ${selectedGoalIndex + 1}`;
+    }
+
+    return null;
+  }
+
+async function saveSelectedGoalLabel(goalLabel: string) {
+    if (!selectedSession || !user) return;
+
+    const currentStatus = participants.find((p) => p.user_id === user.id)?.status;
+    if (currentStatus !== "present") return;
+
+    const { error } = await supabase
+      .from("participants")
+      .update({ goal_label: goalLabel })
+      .eq("session_id", selectedSession.id)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("Erreur sauvegarde objectif choisi :", error.message);
+      return;
+    }
+
+    setParticipants((current) =>
+      current.map((participant) =>
+        participant.user_id === user.id && participant.session_id === selectedSession.id
+          ? { ...participant, goal_label: goalLabel }
+          : participant
+      )
+    );
+  }
+
+  function handleGoalSelection(goalIndex: number, goalLabel: string) {
+    setSelectedGoalIndex((current) => (current === goalIndex ? null : goalIndex));
+    saveSelectedGoalLabel(goalLabel);
+    setOpenPartnerSuggestionKey(null);
+  }
+
+async function handleParticipation(status: ParticipationStatus) {
     if (!selectedSession || !user) return;
 
     const currentStatus = participants.find((p) => p.user_id === user.id)?.status;
@@ -2673,10 +2778,14 @@ await supabase.auth.signOut();
       return;
     }
 
+    const selectedGoalLabel =
+      getCurrentOpenedGoalLabel();
+
     const { error } = await supabase.from("participants").insert({
       session_id: selectedSession.id,
       user_id: user.id,
       status,
+      goal_label: status === "present" ? selectedGoalLabel : null,
     });
 
     if (error) {
@@ -4295,7 +4404,7 @@ if (isPasswordRecovery) {
                           <button
                             type="button"
                             className={isRaceGoalOpen ? "goal-selected-btn" : "goal-unselected-btn"}
-                            onClick={() => setSelectedGoalIndex(isRaceGoalOpen ? null : raceGoalIndex)}
+                            onClick={() => handleGoalSelection(raceGoalIndex, shortLabel)}
                             style={{ marginBottom: isRaceGoalOpen ? 16 : 0 }}
                           >
                             🏁 {shortLabel}
@@ -4369,7 +4478,7 @@ if (isPasswordRecovery) {
                           <button
                             type="button"
                             className={isGoalOpen ? "goal-selected-btn" : "goal-unselected-btn"}
-                            onClick={() => setSelectedGoalIndex(isGoalOpen ? null : goalIndex)}
+                            onClick={() => handleGoalSelection(goalIndex, goalLabel)}
                             style={{ marginBottom: isGoalOpen ? 16 : 0 }}
                           >
                             🎯 {goalLabel}
