@@ -1359,6 +1359,10 @@ export default function CalendarApp() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
     return window.localStorage.getItem("asm-notifications") === "true";
   });
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) return "denied";
+    return Notification.permission;
+  });
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(
   window.location.pathname === "/reset-password"
 );
@@ -1717,6 +1721,58 @@ const [newPassword, setNewPassword] = useState("");
     fetchSessions();
     fetchMyProfile();
   }, [user]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    setNotificationPermission(Notification.permission);
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel("asm-sessions-notifications")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "sessions" },
+        (payload) => {
+          const newSession = payload.new as Session;
+          setSessions((current) => {
+            if (current.some((session) => session.id === newSession.id)) return current;
+            return [...current, newSession].sort((a, b) => a.date.localeCompare(b.date));
+          });
+
+          showAsmNotification(
+            "Nouvelle séance ASM",
+            `${newSession.title} • ${formatDate(newSession.date)}${newSession.start_time ? ` à ${newSession.start_time}` : ""}`
+          );
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "sessions" },
+        (payload) => {
+          const updatedSession = payload.new as Session;
+          setSessions((current) => current.map((session) => session.id === updatedSession.id ? updatedSession : session));
+          if (selectedSession?.id === updatedSession.id) setSelectedSession(updatedSession);
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "sessions" },
+        (payload) => {
+          const deletedSession = payload.old as Partial<Session>;
+          if (!deletedSession.id) return;
+          setSessions((current) => current.filter((session) => session.id !== deletedSession.id));
+          if (selectedSession?.id === deletedSession.id) setSelectedSession(null);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, notificationsEnabled, notificationPermission, selectedSession?.id]);
 
   useEffect(() => {
     if (!selectedSession) {
@@ -2688,10 +2744,61 @@ await supabase.auth.signOut();
     setShowAdminActions(false);
   }
 
-  function toggleNotifications() {
-    const next = !notificationsEnabled;
-    setNotificationsEnabled(next);
-    window.localStorage.setItem("asm-notifications", String(next));
+  function browserNotificationsAvailable() {
+    return typeof window !== "undefined" && "Notification" in window;
+  }
+
+  function showAsmNotification(title: string, body: string) {
+    if (!notificationsEnabled || !browserNotificationsAvailable()) return;
+    if (Notification.permission !== "granted") return;
+
+    try {
+      new Notification(title, {
+        body,
+        icon: "/logo-asm.png",
+        badge: "/logo-asm.png",
+      });
+    } catch {
+      // Certains navigateurs mobiles limitent les notifications hors service worker.
+    }
+  }
+
+  async function toggleNotifications() {
+    if (!browserNotificationsAvailable()) {
+      alert("Ton navigateur ne permet pas les notifications web.");
+      return;
+    }
+
+    if (notificationsEnabled) {
+      setNotificationsEnabled(false);
+      window.localStorage.setItem("asm-notifications", "false");
+      return;
+    }
+
+    const permission = await Notification.requestPermission();
+    setNotificationPermission(permission);
+
+    if (permission !== "granted") {
+      setNotificationsEnabled(false);
+      window.localStorage.setItem("asm-notifications", "false");
+      alert("Les notifications sont bloquées. Tu peux les autoriser dans les réglages du navigateur.");
+      return;
+    }
+
+    setNotificationsEnabled(true);
+    window.localStorage.setItem("asm-notifications", "true");
+
+    showAsmNotification(
+      "Notifications ASM activées",
+      "Tu recevras une alerte quand une nouvelle séance sera ajoutée pendant que l’application est ouverte."
+    );
+  }
+
+  function sendTestNotification() {
+    showAsmNotification(
+      "Test notification ASM",
+      "Si tu vois ce message, les notifications fonctionnent sur cet appareil."
+    );
   }
 
   async function openGpxMap() {
@@ -3988,12 +4095,35 @@ if (isPasswordRecovery) {
               <div className="notification-settings-row">
                 <div>
                   <strong>Notifications de l’application</strong>
-                  <p>Préférence globale. Les vraies notifications push seront finalisées avec la PWA.</p>
+                  <p>
+                    Active les alertes de ce téléphone. L’application prévient quand une nouvelle séance est ajoutée
+                    pendant qu’elle est ouverte.
+                  </p>
+                  <p style={{ marginTop: 6, fontSize: 13, opacity: 0.75 }}>
+                    État navigateur : {!browserNotificationsAvailable()
+                      ? "non compatible"
+                      : notificationPermission === "granted"
+                        ? "autorisé"
+                        : notificationPermission === "denied"
+                          ? "bloqué"
+                          : "à demander"}
+                  </p>
                 </div>
                 <button className={`notification-toggle ${notificationsEnabled ? "enabled" : ""}`} onClick={toggleNotifications}>
                   <span />
                 </button>
               </div>
+
+              {notificationsEnabled && notificationPermission === "granted" && (
+                <button className="secondary-btn" style={{ marginTop: 14 }} onClick={sendTestNotification}>
+                  Envoyer une notification test
+                </button>
+              )}
+
+              <p style={{ marginTop: 14, fontSize: 13, opacity: 0.75 }}>
+                Version simple : pas besoin de nouvelle table Supabase. Pour recevoir des alertes même application fermée,
+                il faudra ensuite ajouter un vrai service worker push.
+              </p>
             </div>
           </section>
         )}
