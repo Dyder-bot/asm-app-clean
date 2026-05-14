@@ -610,12 +610,87 @@ function extractFirstUrl(text?: string | null) {
 }
 
 function cleanSessionDescription(description?: string | null) {
-  // Important : ne pas faire .trim() ici.
-  // Cette fonction est aussi utilisée comme value du textarea d’édition.
-  // Si on trim à chaque frappe, Android/Chrome supprime les espaces de fin
-  // et l’utilisateur ne peut plus écrire naturellement plusieurs mots,
-  // ni conserver les retours à la ligne pour plusieurs objectifs.
-  return (description || "").replace(RACE_DESCRIPTION_MARKER, "").replace(/^\n/, "");
+  return (description || "").replace(RACE_DESCRIPTION_MARKER, "").trim();
+}
+
+function normalizeTrainingText(text?: string | null) {
+  return (text || "")
+    .replace(/[’`]/g, "'")
+    .replace(/\b[eé]ch\b/gi, "échauffement")
+    .replace(/\brecup\b/gi, "récupération")
+    .replace(/\brécup\b/gi, "récupération")
+    .replace(/\bsv\s*1\b/gi, "SV1")
+    .replace(/\bsv\s*2\b/gi, "SV2")
+    .replace(/\s*\+\s*/g, " + ")
+    .replace(/\s*[x×]\s*/g, " × ")
+    .replace(/[ \t]+/g, " ")
+    .trim();
+}
+
+function prettyTrainingDescription(text?: string | null) {
+  const cleaned = cleanSessionDescription(text);
+  if (!cleaned) return "";
+  return normalizeTrainingText(cleaned);
+}
+
+function formatWorkoutElementForDisplay(raw: string) {
+  const part = normalizeTrainingText(raw);
+
+  const minutesMatch = part.match(/^(\d+)\s*'\s*(.*)$/i);
+  if (minutesMatch) {
+    const minutes = Number(minutesMatch[1]);
+    const label = normalizeTrainingText(minutesMatch[2] || "");
+    if (label) return `${minutes} min ${label}`;
+    return `${minutes} min`;
+  }
+
+  const secondsMatch = part.match(/^(\d+)\s*(?:"|s|sec|secondes?)\s*(.*)$/i);
+  if (secondsMatch) {
+    const seconds = Number(secondsMatch[1]);
+    const label = normalizeTrainingText(secondsMatch[2] || "");
+    if (label) return `${seconds} sec ${label}`;
+    return `${seconds} sec`;
+  }
+
+  return part;
+}
+
+function describeRepeatedWorkoutBlock(text: string) {
+  const normalized = normalizeTrainingText(text);
+  const repeatMatch = normalized.match(/(\d+)\s*×\s*\(([^)]*)\)/i);
+  if (!repeatMatch) return null;
+
+  const repetitions = Number(repeatMatch[1]);
+  const blockContent = repeatMatch[2];
+  const parts = blockContent
+    .split(/\s*\+\s*/g)
+    .map((part) => formatWorkoutElementForDisplay(part))
+    .filter(Boolean);
+
+  if (!repetitions || parts.length === 0) return null;
+
+  return { repetitions, parts, originalBlock: repeatMatch[0] };
+}
+
+function buildWorkoutExplanation(text?: string | null) {
+  const cleaned = cleanSessionDescription(text);
+  if (!cleaned) return "";
+
+  const normalized = normalizeTrainingText(cleaned);
+  const repeatedBlock = describeRepeatedWorkoutBlock(normalized);
+
+  if (!repeatedBlock) return normalized;
+
+  const before = normalized.split(repeatedBlock.originalBlock)[0]?.replace(/\+\s*$/, "").trim();
+  const after = normalized.split(repeatedBlock.originalBlock)[1]?.replace(/^\s*\+/, "").trim();
+
+  const lines: string[] = [];
+  if (before) lines.push(formatWorkoutElementForDisplay(before));
+  lines.push(`${repeatedBlock.repetitions} blocs de :`);
+  repeatedBlock.parts.forEach((part) => lines.push(`• ${part}`));
+  if (after) lines.push(formatWorkoutElementForDisplay(after));
+
+  return lines.join("\n");
 }
 
 function isRaceSession(session?: Pick<Session, "type" | "title" | "description"> | null) {
@@ -683,13 +758,16 @@ function getPartnerCompatibilityType(session: Pick<Session, "title" | "descripti
 
   const analyze = selectedGoalText.trim().length > 0 ? selectedGoalText : fullSessionText;
 
+  const hasQualitySignal = /(vma|fractionné|fractionne|seuil|sv1|sv2|tempo|spécifique|specifique|côte|cote|côtes|trail|chaise|grenouille|sauts?|renfo|gainage|pliométrie|plyometrie|\d+\s*[x×]\s*\()/.test(analyze);
+
   if (
-    analyze.includes("footing") ||
-    analyze.includes("endurance fondamentale") ||
-    analyze.includes("récup") ||
-    analyze.includes("recup") ||
-    analyze.includes("récupération") ||
-    analyze.includes("recuperation")
+    !hasQualitySignal &&
+    (analyze.includes("footing") ||
+      analyze.includes("endurance fondamentale") ||
+      analyze.includes("récup") ||
+      analyze.includes("recup") ||
+      analyze.includes("récupération") ||
+      analyze.includes("recuperation"))
   ) {
     return null;
   }
@@ -708,7 +786,19 @@ function getPartnerCompatibilityType(session: Pick<Session, "title" | "descripti
     return "vma";
   }
 
-  if (analyze.includes("seuil") || analyze.includes("tempo") || analyze.includes("spécifique") || analyze.includes("specifique")) {
+  if (
+    analyze.includes("seuil") ||
+    analyze.includes("sv1") ||
+    analyze.includes("sv2") ||
+    analyze.includes("tempo") ||
+    analyze.includes("spécifique") ||
+    analyze.includes("specifique") ||
+    analyze.includes("chaise") ||
+    analyze.includes("grenouille") ||
+    analyze.includes("saut") ||
+    analyze.includes("renfo") ||
+    analyze.includes("gainage")
+  ) {
     return "threshold";
   }
 
@@ -718,7 +808,7 @@ function getPartnerCompatibilityType(session: Pick<Session, "title" | "descripti
 
   // Fallback uniquement si l'objectif ne suffit pas.
   if (fullSessionText.includes("vma") || fullSessionText.includes("fractionné") || fullSessionText.includes("fractionne")) return "vma";
-  if (fullSessionText.includes("seuil") || fullSessionText.includes("tempo")) return "threshold";
+  if (/(seuil|sv1|sv2|tempo|chaise|grenouille|saut|renfo|gainage)/.test(fullSessionText)) return "threshold";
   if (fullSessionText.includes("côte") || fullSessionText.includes("cotes") || fullSessionText.includes("côtes") || fullSessionText.includes("trail")) return "trail";
 
   return null;
@@ -1024,7 +1114,7 @@ function calculateTargetFromText(
   profileVma: string,
   profileFcMax: string
 ): PersonalGoal | null {
-  const text = `${session.title || ""} ${session.description || ""}`.toLowerCase();
+  const text = normalizeTrainingText(`${session.title || ""} ${session.description || ""}`).toLowerCase();
   const vma = Number(profileVma || 0);
   const fcMax = Number(profileFcMax || 0);
 
@@ -1041,12 +1131,25 @@ function calculateTargetFromText(
   const fcMatch = text.match(/(\d+)\s*%\s*(de\s*)?(fc\s*max|fc|max)/);
   const seuilMatch = text.match(/(\d+)\s*[x×]\s*(\d+)'?\s*(au\s*)?seuil/);
   const seuilHillMatch = text.match(/(\d+)\s*[x×]\s*(\d+)\s*['’]?\s*(?:au\s*)?seuil.*?(côte|cote|montée|montee)/);
-  const svHillMatch = text.match(/(\d+)\s*[x×]\s*\(?\s*(\d+)\s*['’]?\s*(sv1|sv2)\s*\+\s*(\d+)\s*['’]?\s*(sv1|sv2)\s*\)?/);
+  const svHillMatch = text.match(/(\d+)\s*[x×]\s*\(?\s*(\d+)\s*['’]\s*sv([12])\s*\+\s*(\d+)\s*['’]\s*sv([12])\s*\)?/);
   const efMatch = text.match(/(^|\s|-)ef(\s|$)|endurance\s+fondamentale|footing/);
   const km10Match = text.match(/(\d+)\s*[x×]\s*(\d+)\s*(m|km)?\s*.*?(allure\s*)?(10\s?km)/);
   const allureMatch = text.match(/allure\s*(\d+)'(\d{1,2})"?/);
   const seuilIntervalMatch = text.match(/(\d+)\s*[x×]\s*((?:\d+\s*['’]\s*)?\d+)\s*["”]?\s*\/\s*((?:\d+\s*['’]\s*)?\d+)\s*["”]?\s*.*?seuil/);
   const vmaTimeIntervalMatch = text.match(/(\d+)\s*[x×]\s*((?:\d+\s*['’]\s*)?\d+)\s*(?:["”]|sec|s|secondes?)?\s*\/\s*((?:\d+\s*['’]\s*)?\d+)\s*(?:["”]|sec|s|secondes?)?\s*.*?(vma|vite)/);
+
+  const repeatedBlock = describeRepeatedWorkoutBlock(text);
+  if (repeatedBlock && /(sv1|sv2|chaise|grenouille|saut|renfo|gainage)/i.test(text)) {
+    return {
+      type: "effort",
+      title: `${repeatedBlock.repetitions} blocs de travail`,
+      detail: `À répéter ${repeatedBlock.repetitions} fois : ${repeatedBlock.parts.join(" + ")}. Les mentions échauffement et récupération encadrent le bloc principal.`,
+      fcLabel: text.includes("sv2")
+        ? formatFcRangeLabel(profileFcMax, 85, 90, "seuil") + " Zone SV2 sur les fractions concernées."
+        : formatCombinedFcLabel(profileFcMax),
+      surface: isTrailSession ? "trail" : "route",
+    };
+  }
 
   if (efMatch) {
     return {
@@ -1065,16 +1168,16 @@ function calculateTargetFromText(
   if (svHillMatch) {
     const repetitions = Number(svHillMatch[1]);
     const firstMinutes = Number(svHillMatch[2]);
-    const firstZone = svHillMatch[3].toUpperCase();
+    const firstZone = `SV${svHillMatch[3]}`;
     const secondMinutes = Number(svHillMatch[4]);
-    const secondZone = svHillMatch[5].toUpperCase();
+    const secondZone = `SV${svHillMatch[5]}`;
 
     return {
       type: "effort",
       title: `${repetitions} × (${firstMinutes}' ${firstZone} + ${secondMinutes}' ${secondZone})`,
-      detail: `Bloc à répéter ${repetitions} fois : ${firstMinutes} minutes en ${firstZone}, puis ${secondMinutes} minutes en ${secondZone}. L’objectif est de rester régulier et maîtrisé sur l’ensemble du bloc.`,
+      detail: `Bloc complet à répéter ${repetitions} fois : ${firstMinutes} minutes en ${firstZone}, puis ${secondMinutes} minutes en ${secondZone}. L’objectif est de rester maîtrisé et régulier.`,
       fcLabel: formatCombinedFcLabel(profileFcMax),
-      surface: "trail",
+      surface: isTrailSession ? "trail" : "route",
     };
   }
 
@@ -2941,7 +3044,7 @@ await supabase.auth.signOut();
       ? await uploadFile(gpxFile, "gpx")
       : editingSession?.gpx_url || null;
 
-    const cleanedDescription = cleanSessionDescription(formDescription).trim();
+    const cleanedDescription = cleanSessionDescription(formDescription);
     const payload = {
       title: formTitle.trim().charAt(0).toUpperCase() + formTitle.trim().slice(1),
       type: formEventKind === "race" ? "Course" : formType,
@@ -5077,13 +5180,7 @@ if (isPasswordRecovery) {
 
               <div className="form-row description-row">
                 <label>Description</label>
-                <textarea
-                  placeholder={formEventKind === "race" ? "Description, horaire, organisation, covoiturage, lien d’inscription..." : "Description, consignes, lien éventuel..."}
-                  value={cleanSessionDescription(formDescription)}
-                  onChange={(e) => setFormDescription(e.target.value)}
-                  rows={5}
-                  style={{ whiteSpace: "pre-wrap" }}
-                />
+                <textarea placeholder={formEventKind === "race" ? "Description, horaire, organisation, covoiturage, lien d’inscription..." : "Description, consignes, lien éventuel..."} value={formDescription} onChange={(e) => setFormDescription(e.target.value)} />
               </div>
 
               <div className="form-row">
@@ -5125,15 +5222,7 @@ if (isPasswordRecovery) {
               <div className="detail-box" style={isRaceSession(selectedSession) ? { borderLeft: `6px solid ${RACE_COLORS.border}`, background: RACE_COLORS.background, color: RACE_COLORS.text } : undefined}>
                 <p style={isRaceSession(selectedSession) ? { color: RACE_COLORS.text } : undefined}>{isRaceSession(selectedSession) ? "🏁 Course" : `🏷️ ${selectedSession.type || "Entraînement"}`}</p>
                 <p style={isRaceSession(selectedSession) ? { color: RACE_COLORS.text } : undefined}>📍 {selectedSession.location || "Lieu non renseigné"}</p>
-                <p
-                  className="session-description"
-                  style={{
-                    ...(isRaceSession(selectedSession) ? { color: RACE_COLORS.text } : {}),
-                    whiteSpace: "pre-wrap",
-                  }}
-                >
-                  {cleanSessionDescription(selectedSession.description).trim() || "Aucune description"}
-                </p>
+                <p className="session-description" style={{ whiteSpace: "pre-line", ...(isRaceSession(selectedSession) ? { color: RACE_COLORS.text } : {}) }}>{buildWorkoutExplanation(selectedSession.description) || "Aucune description"}</p>
 
                 {isRaceSession(selectedSession) && extractFirstUrl(selectedSession.description) && (
                   <a className="primary-btn" href={extractFirstUrl(selectedSession.description) || "#"} target="_blank" rel="noreferrer" style={{ display: "inline-flex", marginTop: 10, background: RACE_COLORS.button, color: "white" }}>
