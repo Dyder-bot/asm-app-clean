@@ -1097,7 +1097,7 @@ function calculateTargetFromStructuredSession(
   }
 
   if (mode === "fc" && percent > 0 && fcMax > 0) {
-    return { type: "fc", originalText: shortObjectiveLabel(originalRawText), percent, fcMax, targetFc: Math.round((fcMax * percent) / 100) };
+    return { type: "fc", originalText: shortObjectiveLabel(`${session.title || ""} ${session.description || ""}`.trim()), percent, fcMax, targetFc: Math.round((fcMax * percent) / 100) };
   }
 
   if ((mode === "seuil" || mode === "10km") && percent > 0 && vma > 0) {
@@ -1153,7 +1153,7 @@ function calculateTargetFromText(
   if (completeWorkoutLine && /(sv1|sv2|chaise|grenouille|saut|renfo|gainage)/i.test(text)) {
     return {
       type: "effort",
-      originalText: shortObjectiveLabel(originalRawText),
+      originalText: shortObjectiveLabel(`${session.title || ""} ${session.description || ""}`.trim()),
       title: completeWorkoutLine.title,
       detail: completeWorkoutLine.detail,
       fcLabel: text.includes("sv2")
@@ -1166,7 +1166,7 @@ function calculateTargetFromText(
   if (efMatch && isPureRecoveryOrWarmup(originalRawText)) {
     return {
       type: "effort",
-      originalText: shortObjectiveLabel(originalRawText),
+      originalText: shortObjectiveLabel(`${session.title || ""} ${session.description || ""}`.trim()),
       title: isTrailSession ? "Endurance fondamentale trail" : "Endurance fondamentale",
       detail: isTrailSession
         ? "Footing trail en aisance respiratoire : effort facile, régulier, sans chercher l’allure route."
@@ -1187,7 +1187,7 @@ function calculateTargetFromText(
 
     return {
       type: "effort",
-      originalText: shortObjectiveLabel(originalRawText),
+      originalText: shortObjectiveLabel(`${session.title || ""} ${session.description || ""}`.trim()),
       title: `${repetitions} × (${firstMinutes}' ${firstZone} + ${secondMinutes}' ${secondZone})`,
       detail: `Bloc complet à répéter ${repetitions} fois : ${firstMinutes} minutes en ${firstZone}, puis ${secondMinutes} minutes en ${secondZone}. L’objectif est de rester maîtrisé et régulier.`,
       fcLabel: formatCombinedFcLabel(profileFcMax),
@@ -1202,7 +1202,7 @@ function calculateTargetFromText(
 
     return {
       type: "effort",
-      originalText: shortObjectiveLabel(originalRawText),
+      originalText: shortObjectiveLabel(`${session.title || ""} ${session.description || ""}`.trim()),
       title: `${repetitions} × ${durationMin}' au seuil en côte`,
       detail: hasActiveDownhill
         ? "Travail au seuil en côte avec descente active : monter à effort contrôlé, puis redescendre en récupération active sans se mettre dans le rouge."
@@ -1226,7 +1226,7 @@ function calculateTargetFromText(
 
     return {
       type: "vma",
-      originalText: shortObjectiveLabel(originalRawText),
+      originalText: shortObjectiveLabel(`${session.title || ""} ${session.description || ""}`.trim()),
       repetitions,
       distance,
       percent,
@@ -1245,7 +1245,7 @@ function calculateTargetFromText(
     const speed = (vma * percent) / 100;
     const pace = 60 / speed;
     const timeSeconds = (distance / 1000) * pace * 60;
-    return { type: "vma", originalText: shortObjectiveLabel(originalRawText), repetitions, distance, percent, vma, pace, timeSeconds };
+    return { type: "vma", originalText: shortObjectiveLabel(`${session.title || ""} ${session.description || ""}`.trim()), repetitions, distance, percent, vma, pace, timeSeconds };
   }
 
   if (seuilIntervalMatch) {
@@ -1255,7 +1255,7 @@ function calculateTargetFromText(
 
     return {
       type: "effort",
-      originalText: shortObjectiveLabel(originalRawText),
+      originalText: shortObjectiveLabel(`${session.title || ""} ${session.description || ""}`.trim()),
       title: `${repetitions} × ${formatDuration(workSeconds)}/${formatDuration(recoverySeconds)} au seuil`,
       detail: isTrailSession
         ? "Travail au seuil en terrain variable : privilégier l’effort et la respiration, sans chercher une allure fixe."
@@ -1274,7 +1274,7 @@ function calculateTargetFromText(
 
     return {
       type: "seuil",
-      originalText: shortObjectiveLabel(originalRawText),
+      originalText: shortObjectiveLabel(`${session.title || ""} ${session.description || ""}`.trim()),
       surface: isTrailSession ? "trail" : "route",
       repetitions,
       durationMin,
@@ -1295,7 +1295,7 @@ function calculateTargetFromText(
 
     return {
       type: "10km",
-      originalText: shortObjectiveLabel(originalRawText),
+      originalText: shortObjectiveLabel(`${session.title || ""} ${session.description || ""}`.trim()),
       surface: isTrailSession ? "trail" : "route",
       repetitions,
       distance,
@@ -1308,13 +1308,13 @@ function calculateTargetFromText(
 
   if (fcMatch && fcMax > 0) {
     const percent = Number(fcMatch[1]);
-    return { type: "fc", originalText: shortObjectiveLabel(originalRawText), percent, fcMax, targetFc: Math.round((fcMax * percent) / 100) };
+    return { type: "fc", originalText: shortObjectiveLabel(`${session.title || ""} ${session.description || ""}`.trim()), percent, fcMax, targetFc: Math.round((fcMax * percent) / 100) };
   }
 
   if (allureMatch) {
     const minutes = Number(allureMatch[1]);
     const seconds = Number(allureMatch[2]);
-    return { type: "allure", originalText: shortObjectiveLabel(originalRawText), pace: minutes + seconds / 60 };
+    return { type: "allure", originalText: shortObjectiveLabel(`${session.title || ""} ${session.description || ""}`.trim()), pace: minutes + seconds / 60 };
   }
 
   return null;
