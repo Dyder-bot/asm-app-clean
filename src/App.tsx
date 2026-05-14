@@ -131,6 +131,7 @@ type PersonalChrono = {
 type PersonalGoal =
   | {
       type: "vma";
+      originalText?: string;
       repetitions?: number;
       distance: number;
       percent: number;
@@ -142,12 +143,14 @@ type PersonalGoal =
     }
   | {
       type: "fc";
+      originalText?: string;
       percent: number;
       fcMax: number;
       targetFc: number;
     }
   | {
       type: "seuil" | "10km";
+      originalText?: string;
       surface: "trail" | "route";
       repetitions?: number;
       distance?: number;
@@ -159,6 +162,7 @@ type PersonalGoal =
     }
   | {
       type: "effort";
+      originalText?: string;
       title: string;
       detail: string;
       fcLabel?: string;
@@ -166,6 +170,7 @@ type PersonalGoal =
     }
   | {
       type: "allure";
+      originalText?: string;
       pace: number;
     };
 
@@ -616,15 +621,19 @@ function cleanSessionDescription(description?: string | null) {
 function normalizeTrainingText(text?: string | null) {
   return (text || "")
     .replace(/[’`]/g, "'")
-    .replace(/(^|[^a-zà-ÿ])[eé]ch([^a-zà-ÿ]|$)/gi, "$1échauffement$2")
-    .replace(/(^|[^a-zà-ÿ])recup([^a-zà-ÿ]|$)/gi, "$1récupération$2")
-    .replace(/(^|[^a-zà-ÿ])récup([^a-zà-ÿ]|$)/gi, "$1récupération$2")
+    .replace(/\b[eé]ch\b/gi, "échauffement")
+    .replace(/\br[eé]cup\b/gi, "récupération")
     .replace(/\bsv\s*1\b/gi, "SV1")
     .replace(/\bsv\s*2\b/gi, "SV2")
     .replace(/\s*\+\s*/g, " + ")
     .replace(/\s*[x×]\s*/g, " × ")
     .replace(/[ \t]+/g, " ")
     .trim();
+}
+
+function shortObjectiveLabel(text?: string | null) {
+  const cleaned = (text || "").trim().replace(/^[-•]+\s*/, "");
+  return cleaned || "Objectif";
 }
 
 
@@ -665,6 +674,33 @@ function describeRepeatedWorkoutBlock(text: string) {
   if (!repetitions || parts.length === 0) return null;
 
   return { repetitions, parts, originalBlock: repeatMatch[0] };
+}
+
+function describeCompleteWorkoutLine(text: string) {
+  const normalized = normalizeTrainingText(text);
+  const repeatedBlock = describeRepeatedWorkoutBlock(normalized);
+  if (!repeatedBlock) return null;
+
+  const beforeBlock = normalized.slice(0, normalized.indexOf(repeatedBlock.originalBlock)).replace(/\s*\+\s*$/g, "").trim();
+  const afterBlock = normalized.slice(normalized.indexOf(repeatedBlock.originalBlock) + repeatedBlock.originalBlock.length).replace(/^\s*\+\s*/g, "").trim();
+
+  const lines: string[] = [];
+  if (beforeBlock) lines.push(`Avant le bloc : ${formatWorkoutElementForDisplay(beforeBlock)}`);
+  lines.push(`Bloc à répéter ${repeatedBlock.repetitions} fois : ${repeatedBlock.parts.join(" + ")}`);
+  if (afterBlock) lines.push(`Après le bloc : ${formatWorkoutElementForDisplay(afterBlock)}`);
+
+  return {
+    title: shortObjectiveLabel(text),
+    detail: lines.join("\n"),
+    repetitions: repeatedBlock.repetitions,
+    parts: repeatedBlock.parts,
+  };
+}
+
+function isPureRecoveryOrWarmup(text: string) {
+  const normalized = normalizeTrainingText(text).toLowerCase();
+  const hasQuality = /(vma|seuil|sv1|sv2|allure\s*10\s*km|\d+\s*[x×]\s*\d|chaise|grenouille|côte|cote)/i.test(normalized);
+  return !hasQuality && /(échauffement|récupération|footing|endurance fondamentale|\bef\b)/i.test(normalized);
 }
 
 function isRaceSession(session?: Pick<Session, "type" | "title" | "description"> | null) {
@@ -1061,7 +1097,7 @@ function calculateTargetFromStructuredSession(
   }
 
   if (mode === "fc" && percent > 0 && fcMax > 0) {
-    return { type: "fc", percent, fcMax, targetFc: Math.round((fcMax * percent) / 100) };
+    return { type: "fc", originalText: shortObjectiveLabel(originalRawText), percent, fcMax, targetFc: Math.round((fcMax * percent) / 100) };
   }
 
   if ((mode === "seuil" || mode === "10km") && percent > 0 && vma > 0) {
@@ -1088,7 +1124,8 @@ function calculateTargetFromText(
   profileVma: string,
   profileFcMax: string
 ): PersonalGoal | null {
-  const text = normalizeTrainingText(`${session.title || ""} ${session.description || ""}`).toLowerCase();
+  const originalRawText = `${session.title || ""} ${session.description || ""}`.trim();
+  const text = normalizeTrainingText(originalRawText).toLowerCase();
   const vma = Number(profileVma || 0);
   const fcMax = Number(profileFcMax || 0);
 
@@ -1112,12 +1149,13 @@ function calculateTargetFromText(
   const seuilIntervalMatch = text.match(/(\d+)\s*[x×]\s*((?:\d+\s*['’]\s*)?\d+)\s*["”]?\s*\/\s*((?:\d+\s*['’]\s*)?\d+)\s*["”]?\s*.*?seuil/);
   const vmaTimeIntervalMatch = text.match(/(\d+)\s*[x×]\s*((?:\d+\s*['’]\s*)?\d+)\s*(?:["”]|sec|s|secondes?)?\s*\/\s*((?:\d+\s*['’]\s*)?\d+)\s*(?:["”]|sec|s|secondes?)?\s*.*?(vma|vite)/);
 
-  const repeatedBlock = describeRepeatedWorkoutBlock(text);
-  if (repeatedBlock && /(sv1|sv2|chaise|grenouille|saut|renfo|gainage)/i.test(text)) {
+  const completeWorkoutLine = describeCompleteWorkoutLine(originalRawText);
+  if (completeWorkoutLine && /(sv1|sv2|chaise|grenouille|saut|renfo|gainage)/i.test(text)) {
     return {
       type: "effort",
-      title: `${repeatedBlock.repetitions} blocs de travail`,
-      detail: `À répéter ${repeatedBlock.repetitions} fois : ${repeatedBlock.parts.join(" + ")}. Les mentions échauffement et récupération encadrent le bloc principal.`,
+      originalText: shortObjectiveLabel(originalRawText),
+      title: completeWorkoutLine.title,
+      detail: completeWorkoutLine.detail,
       fcLabel: text.includes("sv2")
         ? formatFcRangeLabel(profileFcMax, 85, 90, "seuil") + " Zone SV2 sur les fractions concernées."
         : formatCombinedFcLabel(profileFcMax),
@@ -1125,9 +1163,10 @@ function calculateTargetFromText(
     };
   }
 
-  if (efMatch) {
+  if (efMatch && isPureRecoveryOrWarmup(originalRawText)) {
     return {
       type: "effort",
+      originalText: shortObjectiveLabel(originalRawText),
       title: isTrailSession ? "Endurance fondamentale trail" : "Endurance fondamentale",
       detail: isTrailSession
         ? "Footing trail en aisance respiratoire : effort facile, régulier, sans chercher l’allure route."
@@ -1148,6 +1187,7 @@ function calculateTargetFromText(
 
     return {
       type: "effort",
+      originalText: shortObjectiveLabel(originalRawText),
       title: `${repetitions} × (${firstMinutes}' ${firstZone} + ${secondMinutes}' ${secondZone})`,
       detail: `Bloc complet à répéter ${repetitions} fois : ${firstMinutes} minutes en ${firstZone}, puis ${secondMinutes} minutes en ${secondZone}. L’objectif est de rester maîtrisé et régulier.`,
       fcLabel: formatCombinedFcLabel(profileFcMax),
@@ -1162,6 +1202,7 @@ function calculateTargetFromText(
 
     return {
       type: "effort",
+      originalText: shortObjectiveLabel(originalRawText),
       title: `${repetitions} × ${durationMin}' au seuil en côte`,
       detail: hasActiveDownhill
         ? "Travail au seuil en côte avec descente active : monter à effort contrôlé, puis redescendre en récupération active sans se mettre dans le rouge."
@@ -1185,6 +1226,7 @@ function calculateTargetFromText(
 
     return {
       type: "vma",
+      originalText: shortObjectiveLabel(originalRawText),
       repetitions,
       distance,
       percent,
@@ -1203,7 +1245,7 @@ function calculateTargetFromText(
     const speed = (vma * percent) / 100;
     const pace = 60 / speed;
     const timeSeconds = (distance / 1000) * pace * 60;
-    return { type: "vma", repetitions, distance, percent, vma, pace, timeSeconds };
+    return { type: "vma", originalText: shortObjectiveLabel(originalRawText), repetitions, distance, percent, vma, pace, timeSeconds };
   }
 
   if (seuilIntervalMatch) {
@@ -1213,6 +1255,7 @@ function calculateTargetFromText(
 
     return {
       type: "effort",
+      originalText: shortObjectiveLabel(originalRawText),
       title: `${repetitions} × ${formatDuration(workSeconds)}/${formatDuration(recoverySeconds)} au seuil`,
       detail: isTrailSession
         ? "Travail au seuil en terrain variable : privilégier l’effort et la respiration, sans chercher une allure fixe."
@@ -1231,6 +1274,7 @@ function calculateTargetFromText(
 
     return {
       type: "seuil",
+      originalText: shortObjectiveLabel(originalRawText),
       surface: isTrailSession ? "trail" : "route",
       repetitions,
       durationMin,
@@ -1251,6 +1295,7 @@ function calculateTargetFromText(
 
     return {
       type: "10km",
+      originalText: shortObjectiveLabel(originalRawText),
       surface: isTrailSession ? "trail" : "route",
       repetitions,
       distance,
@@ -1263,13 +1308,13 @@ function calculateTargetFromText(
 
   if (fcMatch && fcMax > 0) {
     const percent = Number(fcMatch[1]);
-    return { type: "fc", percent, fcMax, targetFc: Math.round((fcMax * percent) / 100) };
+    return { type: "fc", originalText: shortObjectiveLabel(originalRawText), percent, fcMax, targetFc: Math.round((fcMax * percent) / 100) };
   }
 
   if (allureMatch) {
     const minutes = Number(allureMatch[1]);
     const seconds = Number(allureMatch[2]);
-    return { type: "allure", pace: minutes + seconds / 60 };
+    return { type: "allure", originalText: shortObjectiveLabel(originalRawText), pace: minutes + seconds / 60 };
   }
 
   return null;
@@ -1307,7 +1352,7 @@ function calculateTargetsFromText(
     const goal = calculateTargetFromText(lineSession, profileVma, profileFcMax);
 
     if (goal) {
-      goals.push(goal);
+      goals.push({ ...goal, originalText: goal.originalText || shortObjectiveLabel(line) });
       continue;
     }
 
@@ -1324,6 +1369,7 @@ function calculateTargetsFromText(
     if (lower.includes("seuil")) {
       goals.push({
         type: "effort",
+        originalText: shortObjectiveLabel(line),
         title: line,
         detail: isTrailOrHill
           ? "Travail au seuil en côte/trail : garder un effort contrôlé, sans chercher l’allure route."
@@ -5307,6 +5353,7 @@ if (isPasswordRecovery) {
                   {personalGoals.map((personalGoal, goalIndex) => {
                     const isGoalOpen = selectedGoalIndex === goalIndex;
                     const goalLabel = (() => {
+                      if (personalGoal.originalText) return personalGoal.originalText;
                       if (personalGoal.type === "vma") {
                         if (personalGoal.isTimeBased) {
                           return `${personalGoal.repetitions || ""} × ${formatDuration(personalGoal.timeSeconds)}`.trim();
@@ -5319,7 +5366,7 @@ if (isPasswordRecovery) {
                           : "Seuil";
                       }
                       if (personalGoal.type === "10km") {
-                        return personalGoal.distance ? `${personalGoal.distance} m` : "Allure 10 km";
+                        return personalGoal.repetitions && personalGoal.distance ? `${personalGoal.repetitions} × ${personalGoal.distance} m allure 10 km` : "Allure 10 km";
                       }
                       if (personalGoal.type === "fc") {
                         return `${personalGoal.percent}% FC de réserve`;
@@ -5356,10 +5403,7 @@ if (isPasswordRecovery) {
                                 {personalGoal.isTimeBased ? (
                                   <>
                                     <p>
-                                      Séance : {personalGoal.repetitions || ""} × {formatDuration(personalGoal.timeSeconds)}
-                                      {personalGoal.recoverySeconds
-                                        ? ` / ${formatDuration(personalGoal.recoverySeconds)} récup.`
-                                        : ""}
+                                      Séance : {personalGoal.originalText || `${personalGoal.repetitions || ""} × ${formatDuration(personalGoal.timeSeconds)}${personalGoal.recoverySeconds ? ` / ${formatDuration(personalGoal.recoverySeconds)} récup.` : ""}`}
                                     </p>
                                     <p>Objectif : tenir l’allure correspondant à ta VMA sur chaque fraction rapide.</p>
                                     <p>VMA utilisée : {personalGoal.vma} km/h</p>
@@ -5369,8 +5413,7 @@ if (isPasswordRecovery) {
                                 ) : (
                                   <>
                                     <p>
-                                      Séance : {personalGoal.repetitions ? `${personalGoal.repetitions} × ` : ""}
-                                      {personalGoal.distance} m
+                                      Séance : {personalGoal.originalText || `${personalGoal.repetitions ? `${personalGoal.repetitions} × ` : ""}${personalGoal.distance} m`}
                                     </p>
                                     <p>VMA utilisée : {personalGoal.vma} km/h</p>
                                     <p>Intensité : {personalGoal.percent}% VMA</p>
@@ -5391,6 +5434,7 @@ if (isPasswordRecovery) {
 
                             {(personalGoal.type === "seuil" || personalGoal.type === "10km") && (
                               <>
+                                {personalGoal.originalText && <p>Séance : {personalGoal.originalText}</p>}
                                 {personalGoal.distance && <p>Distance : {personalGoal.distance} m</p>}
 
                                 {personalGoal.durationMin && (
@@ -5430,8 +5474,8 @@ if (isPasswordRecovery) {
 
                             {personalGoal.type === "effort" && (
                               <>
-                                <p>Séance : {personalGoal.title}</p>
-                                <p>{personalGoal.detail}</p>
+                                <p>Séance : {personalGoal.originalText || personalGoal.title}</p>
+                                <p style={{ whiteSpace: "pre-line" }}>{personalGoal.detail}</p>
                                 {personalGoal.fcLabel && <p>{personalGoal.fcLabel}</p>}
                               </>
                             )}
