@@ -627,11 +627,6 @@ function normalizeTrainingText(text?: string | null) {
     .trim();
 }
 
-function prettyTrainingDescription(text?: string | null) {
-  const cleaned = cleanSessionDescription(text);
-  if (!cleaned) return "";
-  return normalizeTrainingText(cleaned);
-}
 
 function formatWorkoutElementForDisplay(raw: string) {
   const part = normalizeTrainingText(raw);
