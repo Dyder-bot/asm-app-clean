@@ -616,9 +616,9 @@ function cleanSessionDescription(description?: string | null) {
 function normalizeTrainingText(text?: string | null) {
   return (text || "")
     .replace(/[’`]/g, "'")
-    .replace(/\b[eé]ch\b/gi, "échauffement")
-    .replace(/\brecup\b/gi, "récupération")
-    .replace(/\brécup\b/gi, "récupération")
+    .replace(/(^|[^a-zà-ÿ])[eé]ch([^a-zà-ÿ]|$)/gi, "$1échauffement$2")
+    .replace(/(^|[^a-zà-ÿ])recup([^a-zà-ÿ]|$)/gi, "$1récupération$2")
+    .replace(/(^|[^a-zà-ÿ])récup([^a-zà-ÿ]|$)/gi, "$1récupération$2")
     .replace(/\bsv\s*1\b/gi, "SV1")
     .replace(/\bsv\s*2\b/gi, "SV2")
     .replace(/\s*\+\s*/g, " + ")
@@ -665,27 +665,6 @@ function describeRepeatedWorkoutBlock(text: string) {
   if (!repetitions || parts.length === 0) return null;
 
   return { repetitions, parts, originalBlock: repeatMatch[0] };
-}
-
-function buildWorkoutExplanation(text?: string | null) {
-  const cleaned = cleanSessionDescription(text);
-  if (!cleaned) return "";
-
-  const normalized = normalizeTrainingText(cleaned);
-  const repeatedBlock = describeRepeatedWorkoutBlock(normalized);
-
-  if (!repeatedBlock) return normalized;
-
-  const before = normalized.split(repeatedBlock.originalBlock)[0]?.replace(/\+\s*$/, "").trim();
-  const after = normalized.split(repeatedBlock.originalBlock)[1]?.replace(/^\s*\+/, "").trim();
-
-  const lines: string[] = [];
-  if (before) lines.push(formatWorkoutElementForDisplay(before));
-  lines.push(`${repeatedBlock.repetitions} blocs de :`);
-  repeatedBlock.parts.forEach((part) => lines.push(`• ${part}`));
-  if (after) lines.push(formatWorkoutElementForDisplay(after));
-
-  return lines.join("\n");
 }
 
 function isRaceSession(session?: Pick<Session, "type" | "title" | "description"> | null) {
@@ -1322,7 +1301,7 @@ function calculateTargetsFromText(
     const lineSession: Session = {
       ...session,
       title: line,
-      description: line,
+      description: "",
     };
 
     const goal = calculateTargetFromText(lineSession, profileVma, profileFcMax);
@@ -5217,7 +5196,7 @@ if (isPasswordRecovery) {
               <div className="detail-box" style={isRaceSession(selectedSession) ? { borderLeft: `6px solid ${RACE_COLORS.border}`, background: RACE_COLORS.background, color: RACE_COLORS.text } : undefined}>
                 <p style={isRaceSession(selectedSession) ? { color: RACE_COLORS.text } : undefined}>{isRaceSession(selectedSession) ? "🏁 Course" : `🏷️ ${selectedSession.type || "Entraînement"}`}</p>
                 <p style={isRaceSession(selectedSession) ? { color: RACE_COLORS.text } : undefined}>📍 {selectedSession.location || "Lieu non renseigné"}</p>
-                <p className="session-description" style={{ whiteSpace: "pre-line", ...(isRaceSession(selectedSession) ? { color: RACE_COLORS.text } : {}) }}>{buildWorkoutExplanation(selectedSession.description) || "Aucune description"}</p>
+                <p className="session-description" style={{ whiteSpace: "pre-line", ...(isRaceSession(selectedSession) ? { color: RACE_COLORS.text } : {}) }}>{cleanSessionDescription(selectedSession.description) || "Aucune description"}</p>
 
                 {isRaceSession(selectedSession) && extractFirstUrl(selectedSession.description) && (
                   <a className="primary-btn" href={extractFirstUrl(selectedSession.description) || "#"} target="_blank" rel="noreferrer" style={{ display: "inline-flex", marginTop: 10, background: RACE_COLORS.button, color: "white" }}>
