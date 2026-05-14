@@ -610,7 +610,12 @@ function extractFirstUrl(text?: string | null) {
 }
 
 function cleanSessionDescription(description?: string | null) {
-  return (description || "").replace(RACE_DESCRIPTION_MARKER, "").trim();
+  // Important : ne pas faire .trim() ici.
+  // Cette fonction est aussi utilisée comme value du textarea d’édition.
+  // Si on trim à chaque frappe, Android/Chrome supprime les espaces de fin
+  // et l’utilisateur ne peut plus écrire naturellement plusieurs mots,
+  // ni conserver les retours à la ligne pour plusieurs objectifs.
+  return (description || "").replace(RACE_DESCRIPTION_MARKER, "").replace(/^\n/, "");
 }
 
 function isRaceSession(session?: Pick<Session, "type" | "title" | "description"> | null) {
@@ -1036,7 +1041,7 @@ function calculateTargetFromText(
   const fcMatch = text.match(/(\d+)\s*%\s*(de\s*)?(fc\s*max|fc|max)/);
   const seuilMatch = text.match(/(\d+)\s*[x×]\s*(\d+)'?\s*(au\s*)?seuil/);
   const seuilHillMatch = text.match(/(\d+)\s*[x×]\s*(\d+)\s*['’]?\s*(?:au\s*)?seuil.*?(côte|cote|montée|montee)/);
-  const svHillMatch = text.match(/(\d+)\s*[x×]\s*\(?\s*(\d+)\s*['’]\s*sv2\s*\+\s*(\d+)\s*['’]\s*sv1\s*\)?/);
+  const svHillMatch = text.match(/(\d+)\s*[x×]\s*\(?\s*(\d+)\s*['’]?\s*(sv1|sv2)\s*\+\s*(\d+)\s*['’]?\s*(sv1|sv2)\s*\)?/);
   const efMatch = text.match(/(^|\s|-)ef(\s|$)|endurance\s+fondamentale|footing/);
   const km10Match = text.match(/(\d+)\s*[x×]\s*(\d+)\s*(m|km)?\s*.*?(allure\s*)?(10\s?km)/);
   const allureMatch = text.match(/allure\s*(\d+)'(\d{1,2})"?/);
@@ -1059,13 +1064,15 @@ function calculateTargetFromText(
 
   if (svHillMatch) {
     const repetitions = Number(svHillMatch[1]);
-    const sv2Minutes = Number(svHillMatch[2]);
-    const sv1Minutes = Number(svHillMatch[3]);
+    const firstMinutes = Number(svHillMatch[2]);
+    const firstZone = svHillMatch[3].toUpperCase();
+    const secondMinutes = Number(svHillMatch[4]);
+    const secondZone = svHillMatch[5].toUpperCase();
 
     return {
       type: "effort",
-      title: `${repetitions} × (${sv2Minutes}' SV2 + ${sv1Minutes}' SV1) en côte`,
-      detail: "Alternance en côte : 4 minutes proches SV2 puis 2 minutes proches SV1. L’objectif est de rester maîtrisé, sans exploser sur les fractions SV2.",
+      title: `${repetitions} × (${firstMinutes}' ${firstZone} + ${secondMinutes}' ${secondZone})`,
+      detail: `Bloc à répéter ${repetitions} fois : ${firstMinutes} minutes en ${firstZone}, puis ${secondMinutes} minutes en ${secondZone}. L’objectif est de rester régulier et maîtrisé sur l’ensemble du bloc.`,
       fcLabel: formatCombinedFcLabel(profileFcMax),
       surface: "trail",
     };
@@ -2934,7 +2941,7 @@ await supabase.auth.signOut();
       ? await uploadFile(gpxFile, "gpx")
       : editingSession?.gpx_url || null;
 
-    const cleanedDescription = cleanSessionDescription(formDescription);
+    const cleanedDescription = cleanSessionDescription(formDescription).trim();
     const payload = {
       title: formTitle.trim().charAt(0).toUpperCase() + formTitle.trim().slice(1),
       type: formEventKind === "race" ? "Course" : formType,
@@ -5070,7 +5077,13 @@ if (isPasswordRecovery) {
 
               <div className="form-row description-row">
                 <label>Description</label>
-                <textarea placeholder={formEventKind === "race" ? "Description, horaire, organisation, covoiturage, lien d’inscription..." : "Description, consignes, lien éventuel..."} value={cleanSessionDescription(formDescription)} onChange={(e) => setFormDescription(e.target.value)} />
+                <textarea
+                  placeholder={formEventKind === "race" ? "Description, horaire, organisation, covoiturage, lien d’inscription..." : "Description, consignes, lien éventuel..."}
+                  value={cleanSessionDescription(formDescription)}
+                  onChange={(e) => setFormDescription(e.target.value)}
+                  rows={5}
+                  style={{ whiteSpace: "pre-wrap" }}
+                />
               </div>
 
               <div className="form-row">
@@ -5112,7 +5125,15 @@ if (isPasswordRecovery) {
               <div className="detail-box" style={isRaceSession(selectedSession) ? { borderLeft: `6px solid ${RACE_COLORS.border}`, background: RACE_COLORS.background, color: RACE_COLORS.text } : undefined}>
                 <p style={isRaceSession(selectedSession) ? { color: RACE_COLORS.text } : undefined}>{isRaceSession(selectedSession) ? "🏁 Course" : `🏷️ ${selectedSession.type || "Entraînement"}`}</p>
                 <p style={isRaceSession(selectedSession) ? { color: RACE_COLORS.text } : undefined}>📍 {selectedSession.location || "Lieu non renseigné"}</p>
-                <p className="session-description" style={isRaceSession(selectedSession) ? { color: RACE_COLORS.text } : undefined}>{cleanSessionDescription(selectedSession.description) || "Aucune description"}</p>
+                <p
+                  className="session-description"
+                  style={{
+                    ...(isRaceSession(selectedSession) ? { color: RACE_COLORS.text } : {}),
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {cleanSessionDescription(selectedSession.description).trim() || "Aucune description"}
+                </p>
 
                 {isRaceSession(selectedSession) && extractFirstUrl(selectedSession.description) && (
                   <a className="primary-btn" href={extractFirstUrl(selectedSession.description) || "#"} target="_blank" rel="noreferrer" style={{ display: "inline-flex", marginTop: 10, background: RACE_COLORS.button, color: "white" }}>
