@@ -622,7 +622,8 @@ function normalizeTrainingText(text?: string | null) {
   return (text || "")
     .replace(/[’`]/g, "'")
     .replace(/\b[eé]ch\b/gi, "échauffement")
-    .replace(/\br[eé]cup\b/gi, "récupération")
+    .replace(/\brecup\b/gi, "récupération")
+    .replace(/\brécup\b(?!ération)/gi, "récupération")
     .replace(/\bsv\s*1\b/gi, "SV1")
     .replace(/\bsv\s*2\b/gi, "SV2")
     .replace(/\s*\+\s*/g, " + ")
@@ -695,6 +696,31 @@ function describeCompleteWorkoutLine(text: string) {
     repetitions: repeatedBlock.repetitions,
     parts: repeatedBlock.parts,
   };
+}
+
+function formatSvBlockFcLabel(text: string, profileFcMax: string) {
+  const normalized = normalizeTrainingText(text).toLowerCase();
+  const hasSv1 = normalized.includes("sv1");
+  const hasSv2 = normalized.includes("sv2");
+
+  if (hasSv1 && hasSv2) {
+    return [
+      "Repères cardio :",
+      `• SV1 : ${formatFcRangeLabel(profileFcMax, 75, 82, "endurance")}`,
+      `• SV2 : ${formatFcRangeLabel(profileFcMax, 85, 90, "seuil")}`,
+      "Le SV1 sert à rester soutenu mais contrôlé ; le SV2 correspond aux fractions les plus hautes du bloc.",
+    ].join("\n");
+  }
+
+  if (hasSv2) {
+    return formatFcRangeLabel(profileFcMax, 85, 90, "seuil") + " Zone SV2 sur les fractions concernées.";
+  }
+
+  if (hasSv1) {
+    return formatFcRangeLabel(profileFcMax, 75, 82, "endurance") + " Zone SV1 sur les fractions concernées.";
+  }
+
+  return formatCombinedFcLabel(profileFcMax);
 }
 
 function isPureRecoveryOrWarmup(text: string) {
@@ -1156,9 +1182,7 @@ function calculateTargetFromText(
       originalText: shortObjectiveLabel(`${session.title || ""} ${session.description || ""}`.trim()),
       title: completeWorkoutLine.title,
       detail: completeWorkoutLine.detail,
-      fcLabel: text.includes("sv2")
-        ? formatFcRangeLabel(profileFcMax, 85, 90, "seuil") + " Zone SV2 sur les fractions concernées."
-        : formatCombinedFcLabel(profileFcMax),
+      fcLabel: formatSvBlockFcLabel(originalRawText, profileFcMax),
       surface: isTrailSession ? "trail" : "route",
     };
   }
@@ -5476,7 +5500,7 @@ if (isPasswordRecovery) {
                               <>
                                 <p>Séance : {personalGoal.originalText || personalGoal.title}</p>
                                 <p style={{ whiteSpace: "pre-line" }}>{personalGoal.detail}</p>
-                                {personalGoal.fcLabel && <p>{personalGoal.fcLabel}</p>}
+                                {personalGoal.fcLabel && <p style={{ whiteSpace: "pre-line" }}>{personalGoal.fcLabel}</p>}
                               </>
                             )}
 
