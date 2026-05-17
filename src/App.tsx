@@ -1556,6 +1556,16 @@ const [newPassword, setNewPassword] = useState("");
   const [importPlanYear, setImportPlanYear] = useState(String(new Date().getFullYear()));
   const [importedSessions, setImportedSessions] = useState<ImportedPlanSession[]>([]);
   const [importingPlan, setImportingPlan] = useState(false);
+  const [statsYear, setStatsYear] = useState(String(new Date().getFullYear()));
+  const [inactiveDays, setInactiveDays] = useState("60");
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsError, setStatsError] = useState("");
+  const [statsSummary, setStatsSummary] = useState<any | null>(null);
+  const [statsByMonth, setStatsByMonth] = useState<any[]>([]);
+  const [statsByWeek, setStatsByWeek] = useState<any[]>([]);
+  const [statsByActivity, setStatsByActivity] = useState<any[]>([]);
+  const [statsTopSessions, setStatsTopSessions] = useState<any[]>([]);
+  const [statsInactiveMembers, setStatsInactiveMembers] = useState<any[]>([]);
 
 
   function openTab(tab: AppTab) {
@@ -1578,7 +1588,64 @@ const [newPassword, setNewPassword] = useState("");
     if (tab === "admin") {
       refreshAdminLists();
     }
+
+    if (tab === "statistics") {
+      fetchAdminStatistics();
+    }
   }
+  async function fetchAdminStatistics(yearValue = statsYear, inactiveDaysValue = inactiveDays) {
+    if (!isAdmin) return;
+
+    setStatsLoading(true);
+    setStatsError("");
+
+    const yearNumber = Number(yearValue || new Date().getFullYear());
+    const inactiveNumber = Number(inactiveDaysValue || 60);
+
+    try {
+      const [
+        summaryResult,
+        monthResult,
+        weekResult,
+        activityResult,
+        topSessionsResult,
+        inactiveResult,
+      ] = await Promise.all([
+        supabase.rpc("get_admin_attendance_summary", { p_year: yearNumber }),
+        supabase.rpc("get_admin_attendance_by_month", { p_year: yearNumber }),
+        supabase.rpc("get_admin_attendance_by_week", { p_year: yearNumber }),
+        supabase.rpc("get_admin_attendance_by_activity", { p_year: yearNumber }),
+        supabase.rpc("get_admin_top_sessions", { p_year: yearNumber, p_limit: 10 }),
+        supabase.rpc("get_admin_inactive_members", { p_inactive_days: inactiveNumber }),
+      ]);
+
+      const firstError =
+        summaryResult.error ||
+        monthResult.error ||
+        weekResult.error ||
+        activityResult.error ||
+        topSessionsResult.error ||
+        inactiveResult.error;
+
+      if (firstError) {
+        setStatsError(firstError.message);
+        return;
+      }
+
+      setStatsSummary(Array.isArray(summaryResult.data) ? summaryResult.data[0] || null : summaryResult.data || null);
+      setStatsByMonth(monthResult.data || []);
+      setStatsByWeek(weekResult.data || []);
+      setStatsByActivity(activityResult.data || []);
+      setStatsTopSessions(topSessionsResult.data || []);
+      setStatsInactiveMembers(inactiveResult.data || []);
+    } catch (error: any) {
+      setStatsError(error?.message || "Impossible de charger les statistiques.");
+    } finally {
+      setStatsLoading(false);
+    }
+  }
+
+
 
 
 
@@ -2070,6 +2137,12 @@ const [newPassword, setNewPassword] = useState("");
   };
 
 
+
+  useEffect(() => {
+    if (activeTab === "statistics" && isAdmin) {
+      fetchAdminStatistics(statsYear, inactiveDays);
+    }
+  }, [statsYear, inactiveDays, activeTab, isAdmin]);
 
   const sessionsByDate = useMemo(() => {
     return sessions.reduce((acc, session) => {
@@ -5029,25 +5102,172 @@ if (isPasswordRecovery) {
             <h2>📊 Statistiques</h2>
 
             <div className="profile-card" style={{ marginBottom: 14 }}>
-              <strong>Statistiques administrateur</strong>
+              <strong>Tableau de bord admin</strong>
               <p>
-                Cet espace permettra de suivre la fréquentation du club : présences par semaine,
-                par mois et par type d’activité.
+                Suivi des présences du club, des activités les plus pratiquées et des adhérents moins présents.
               </p>
+
+              <div className="form-grid" style={{ marginTop: 12 }}>
+                <label>
+                  Année
+                  <select value={statsYear} onChange={(event) => setStatsYear(event.target.value)}>
+                    {Array.from({ length: 6 }, (_, index) => String(new Date().getFullYear() - index)).map((yearOption) => (
+                      <option key={yearOption} value={yearOption}>{yearOption}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  Alerte décrochage
+                  <select value={inactiveDays} onChange={(event) => setInactiveDays(event.target.value)}>
+                    <option value="30">Pas venu depuis 30 jours</option>
+                    <option value="60">Pas venu depuis 2 mois</option>
+                    <option value="90">Pas venu depuis 3 mois</option>
+                    <option value="120">Pas venu depuis 4 mois</option>
+                  </select>
+                </label>
+              </div>
+
+              <button className="secondary-btn" onClick={() => fetchAdminStatistics()} disabled={statsLoading} style={{ marginTop: 12 }}>
+                {statsLoading ? "Chargement..." : "Actualiser les statistiques"}
+              </button>
+
+              {statsError && (
+                <div className="hint-card" style={{ marginTop: 12 }}>
+                  Erreur statistiques : {statsError}
+                </div>
+              )}
+            </div>
+
+            {statsSummary && (
+              <div className="stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
+                <div className="performance-card">
+                  <span>Présences</span>
+                  <strong>{statsSummary.total_presences ?? 0}</strong>
+                </div>
+                <div className="performance-card">
+                  <span>Séances</span>
+                  <strong>{statsSummary.total_sessions ?? 0}</strong>
+                </div>
+                <div className="performance-card">
+                  <span>Moyenne</span>
+                  <strong>{Number(statsSummary.average_per_session ?? 0).toFixed(1)}</strong>
+                </div>
+              </div>
+            )}
+
+            <div className="profile-card" style={{ marginBottom: 14 }}>
+              <h3 style={{ marginTop: 0 }}>📅 Présences par mois</h3>
+              {statsByMonth.length === 0 ? (
+                <p className="empty-message">Aucune présence sur cette année.</p>
+              ) : (
+                <div className="admin-list">
+                  {statsByMonth.map((row) => (
+                    <div key={row.month_num} className="admin-card">
+                      <div>
+                        <strong>{row.month_label}</strong>
+                        <p>{row.sessions_count} séance(s)</p>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <strong>{row.total_presences}</strong>
+                        <p>moy. {Number(row.average_per_session ?? 0).toFixed(1)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="profile-card" style={{ marginBottom: 14 }}>
-              <h3 style={{ marginTop: 0 }}>À suivre</h3>
-              <p>👥 Présences par semaine</p>
-              <p>📅 Présences par mois</p>
-              <p>🏃 Répartition par activité</p>
-              <p>🔥 Séances les plus fréquentées</p>
+              <h3 style={{ marginTop: 0 }}>📆 Présences par semaine</h3>
+              {statsByWeek.length === 0 ? (
+                <p className="empty-message">Aucune présence sur cette année.</p>
+              ) : (
+                <div className="admin-list">
+                  {statsByWeek.map((row) => (
+                    <div key={row.week_start} className="admin-card">
+                      <div>
+                        <strong>{row.week_label}</strong>
+                        <p>{row.sessions_count} séance(s)</p>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <strong>{row.total_presences}</strong>
+                        <p>moy. {Number(row.average_per_session ?? 0).toFixed(1)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
-            <p className="empty-message">
-              Le bouton est maintenant en place dans Administration. La prochaine étape sera de brancher les calculs
-              sur les tables Supabase sessions et participants.
-            </p>
+            <div className="profile-card" style={{ marginBottom: 14 }}>
+              <h3 style={{ marginTop: 0 }}>🏃 Activités les plus pratiquées</h3>
+              {statsByActivity.length === 0 ? (
+                <p className="empty-message">Aucune donnée d’activité.</p>
+              ) : (
+                <div className="admin-list">
+                  {statsByActivity.map((row) => (
+                    <div key={row.activity_type || "Autre"} className="admin-card">
+                      <div>
+                        <strong>{row.activity_type || "Autre"}</strong>
+                        <p>{row.sessions_count} séance(s)</p>
+                      </div>
+                      <strong>{row.total_presences}</strong>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="profile-card" style={{ marginBottom: 14 }}>
+              <h3 style={{ marginTop: 0 }}>🔥 Séances les plus fréquentées</h3>
+              {statsTopSessions.length === 0 ? (
+                <p className="empty-message">Aucune séance classée.</p>
+              ) : (
+                <div className="admin-list">
+                  {statsTopSessions.map((row) => (
+                    <div key={row.session_id} className="admin-card">
+                      <div>
+                        <strong>{row.title}</strong>
+                        <p>{new Date(row.session_date).toLocaleDateString("fr-FR")} · {row.activity_type || "Autre"}</p>
+                      </div>
+                      <strong>{row.total_presences}</strong>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="profile-card">
+              <h3 style={{ marginTop: 0 }}>⚠️ Adhérents qui décrochent</h3>
+              <p style={{ opacity: 0.75 }}>
+                Liste des membres actifs sans présence récente selon le seuil choisi.
+              </p>
+
+              {statsInactiveMembers.length === 0 ? (
+                <p className="empty-message">Aucun adhérent à signaler pour ce seuil.</p>
+              ) : (
+                <div className="admin-list">
+                  {statsInactiveMembers.map((member) => (
+                    <div key={member.profile_id} className="admin-card">
+                      <div>
+                        <strong>{member.firstname || ""} {member.lastname || ""}</strong>
+                        <p>{member.email || "Sans email renseigné"}</p>
+                        <p>
+                          {member.last_presence_date
+                            ? `Dernière présence : ${new Date(member.last_presence_date).toLocaleDateString("fr-FR")}`
+                            : "Aucune présence enregistrée"}
+                        </p>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <strong>{member.days_inactive ?? "—"} j</strong>
+                        <p>{member.total_presences ?? 0} présence(s)</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </section>
         )}
 
