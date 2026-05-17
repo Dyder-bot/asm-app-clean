@@ -43,7 +43,7 @@ const RACE_COLORS = {
 
 const WEEK_DAYS = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
 
-type AppTab = "calendar" | "news" | "publishNews" | "mySessions" | "chronos" | "profile" | "notifications" | "admin" | "importPlan";
+type AppTab = "calendar" | "news" | "publishNews" | "mySessions" | "chronos" | "profile" | "notifications" | "admin" | "importPlan" | "statistics";
 type ParticipationStatus = "present" | "interested";
 type WorkoutMode = "" | "vma" | "fc" | "seuil" | "10km" | "allure";
 
@@ -1466,6 +1466,7 @@ export default function CalendarApp() {
 
 
   const [showMenu, setShowMenu] = useState(false);
+  const [showAdminMenu, setShowAdminMenu] = useState(false);
   const [showAdminActions, setShowAdminActions] = useState(false);
   const [showApprovedMembers, setShowApprovedMembers] = useState(false);
 
@@ -3714,42 +3715,70 @@ if (isPasswordRecovery) {
                 gap: 8,
               }}
             >
-              <div
+              <button
+                type="button"
+                className={
+                  ["admin", "publishNews", "importPlan", "statistics"].includes(activeTab)
+                    ? "active"
+                    : ""
+                }
+                onClick={() => setShowAdminMenu((current) => !current)}
                 style={{
-                  padding: "0 26px",
-                  color: "rgba(255,255,255,0.55)",
-                  fontSize: 13,
-                  fontWeight: 800,
-                  textTransform: "uppercase",
-                  letterSpacing: 0.6,
+                  paddingTop: 12,
+                  paddingBottom: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
                 }}
               >
-                Administration
-              </div>
-
-              <button
-                className={activeTab === "admin" ? "active" : ""}
-                onClick={() => openTab("admin") }
-                style={{ paddingTop: 12, paddingBottom: 12 }}
-              >
-                ✅ Demandes d’accès{pendingProfiles.length + deletionRequests.length > 0 ? ` (${pendingProfiles.length + deletionRequests.length})` : ""}
+                <span>🛠️ Administration</span>
+                <span style={{ opacity: 0.75 }}>{showAdminMenu ? "▲" : "▼"}</span>
               </button>
 
-              <button
-                className={activeTab === "publishNews" ? "active" : ""}
-                onClick={() => openTab("publishNews") }
-                style={{ paddingTop: 12, paddingBottom: 12 }}
-              >
-                📰 Ajouter une actualité
-              </button>
+              {showAdminMenu && (
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 6,
+                    padding: "2px 0 4px 18px",
+                    borderLeft: "1px solid rgba(221,246,77,0.22)",
+                    marginLeft: 26,
+                  }}
+                >
+                  <button
+                    className={activeTab === "admin" ? "active" : ""}
+                    onClick={() => openTab("admin")}
+                    style={{ paddingTop: 10, paddingBottom: 10, fontSize: 15 }}
+                  >
+                    ✅ Demandes d’accès{pendingProfiles.length + deletionRequests.length > 0 ? ` (${pendingProfiles.length + deletionRequests.length})` : ""}
+                  </button>
 
-              <button
-                className={activeTab === "importPlan" ? "active" : ""}
-                onClick={() => openTab("importPlan") }
-                style={{ paddingTop: 12, paddingBottom: 12 }}
-              >
-                📥 Importer un plan
-              </button>
+                  <button
+                    className={activeTab === "publishNews" ? "active" : ""}
+                    onClick={() => openTab("publishNews")}
+                    style={{ paddingTop: 10, paddingBottom: 10, fontSize: 15 }}
+                  >
+                    📰 Ajouter une actualité
+                  </button>
+
+                  <button
+                    className={activeTab === "importPlan" ? "active" : ""}
+                    onClick={() => openTab("importPlan")}
+                    style={{ paddingTop: 10, paddingBottom: 10, fontSize: 15 }}
+                  >
+                    📥 Importer un plan
+                  </button>
+
+                  <button
+                    className={activeTab === "statistics" ? "active" : ""}
+                    onClick={() => openTab("statistics")}
+                    style={{ paddingTop: 10, paddingBottom: 10, fontSize: 15 }}
+                  >
+                    📊 Statistiques
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -3831,6 +3860,8 @@ if (isPasswordRecovery) {
                 ? "Importer un plan"
                 : activeTab === "admin"
                 ? "Demandes d’accès"
+                : activeTab === "statistics"
+                ? "Statistiques"
                 : "Notifications"}
             </p>
           </div>
@@ -4989,6 +5020,34 @@ if (isPasswordRecovery) {
                 </div>
               )
             )}
+          </section>
+        )}
+
+
+        {activeTab === "statistics" && isAdmin && (
+          <section className="admin-screen">
+            <h2>📊 Statistiques</h2>
+
+            <div className="profile-card" style={{ marginBottom: 14 }}>
+              <strong>Statistiques administrateur</strong>
+              <p>
+                Cet espace permettra de suivre la fréquentation du club : présences par semaine,
+                par mois et par type d’activité.
+              </p>
+            </div>
+
+            <div className="profile-card" style={{ marginBottom: 14 }}>
+              <h3 style={{ marginTop: 0 }}>À suivre</h3>
+              <p>👥 Présences par semaine</p>
+              <p>📅 Présences par mois</p>
+              <p>🏃 Répartition par activité</p>
+              <p>🔥 Séances les plus fréquentées</p>
+            </div>
+
+            <p className="empty-message">
+              Le bouton est maintenant en place dans Administration. La prochaine étape sera de brancher les calculs
+              sur les tables Supabase sessions et participants.
+            </p>
           </section>
         )}
 
